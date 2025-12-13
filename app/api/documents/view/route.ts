@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           key = documentPath.replace(`${process.env.R2_PUBLIC_URL}/`, '').replace(`${process.env.R2_PUBLIC_URL}`, '');
         } else {
           // Fallback: extract last two path segments
-          const parts = documentPath.split('/').filter(p => p);
+          const parts = documentPath.split('/').filter((p: string) => p);
           key = parts.slice(-2).join('/');
         }
       }

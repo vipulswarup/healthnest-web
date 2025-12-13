@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     if (!validationResult.success) {
       throw new AppError(
-        validationResult.error.errors[0].message,
+        validationResult.error.issues[0].message,
         400,
         'VALIDATION_ERROR'
       );

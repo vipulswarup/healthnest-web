@@ -1,5 +1,7 @@
 'use client';
 
+import { ReactElement } from 'react';
+
 interface RecordDataDisplayProps {
   data: Record<string, any>;
 }
@@ -52,7 +54,7 @@ function isEmptyValue(value: any): boolean {
   return false;
 }
 
-function renderDataItem(key: string, value: any, level: number = 0): JSX.Element | null {
+function renderDataItem(key: string, value: any, level: number = 0): ReactElement | null {
   if (isEmptyValue(value)) {
     return null;
   }

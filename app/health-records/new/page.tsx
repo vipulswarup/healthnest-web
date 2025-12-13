@@ -2,13 +2,13 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { DEFAULT_TAGS, RECORD_TYPES } from '@/lib/constants/tags';
 import { getRecordTypeOptions } from '@/lib/constants/labels';
 
-export default function NewHealthRecordPage() {
+function NewHealthRecordContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -20,7 +20,7 @@ export default function NewHealthRecordPage() {
 
   const [formData, setFormData] = useState({
     patientId: patientId,
-    recordType: RECORD_TYPES[0] || '',
+    recordType: (RECORD_TYPES[0] || '') as string,
     source: '',
     tags: [] as string[],
     data: {} as Record<string, any>,
@@ -255,6 +255,21 @@ export default function NewHealthRecordPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function NewHealthRecordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0175C2] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <NewHealthRecordContent />
+    </Suspense>
   );
 }
 
