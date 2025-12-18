@@ -50,7 +50,7 @@ export async function uploadToR2(
 ): Promise<string> {
   const config = getR2Config();
   const client = getR2Client();
-  
+
   const command = new PutObjectCommand({
     Bucket: config.bucketName,
     Key: key,
@@ -59,18 +59,18 @@ export async function uploadToR2(
   });
 
   await client.send(command);
-  
-  const publicUrl = process.env.R2_PUBLIC_URL 
+
+  const publicUrl = process.env.R2_PUBLIC_URL
     ? `${process.env.R2_PUBLIC_URL}/${key}`
     : `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
-  
+
   return publicUrl;
 }
 
 export async function getR2SignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
   const config = getR2Config();
   const client = getR2Client();
-  
+
   const command = new GetObjectCommand({
     Bucket: config.bucketName,
     Key: key,
@@ -82,12 +82,25 @@ export async function getR2SignedUrl(key: string, expiresIn: number = 3600): Pro
 export async function deleteFromR2(key: string): Promise<void> {
   const config = getR2Config();
   const client = getR2Client();
-  
+
   const command = new DeleteObjectCommand({
     Bucket: config.bucketName,
     Key: key,
   });
 
   await client.send(command);
+}
+
+export async function getR2Object(key: string) {
+  const config = getR2Config();
+  const client = getR2Client();
+
+  const command = new GetObjectCommand({
+    Bucket: config.bucketName,
+    Key: key,
+  });
+
+  const response = await client.send(command);
+  return response.Body;
 }
 

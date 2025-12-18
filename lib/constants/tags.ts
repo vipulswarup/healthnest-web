@@ -11,6 +11,7 @@ export const DEFAULT_TAGS = [
 
 export const RECORD_TYPES = [
   'openEHR-EHR-OBSERVATION.lab_test.v1',
+  'openEHR-EHR-OBSERVATION.imaging_exam_result.v1',
   'openEHR-EHR-OBSERVATION.vital_signs.v2',
   'openEHR-EHR-EVALUATION.problem_diagnosis.v1',
   'openEHR-EHR-INSTRUCTION.medication_order.v1',

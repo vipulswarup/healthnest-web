@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import { uploadToR2 } from '@/lib/r2';
+import { createDocument } from '@/lib/services/document.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 import { randomUUID } from 'crypto';
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     // Generate unique file path
     const fileExtension = file.name.split('.').pop();
-    const fileName = `${session.user.id}/${randomUUID()}.${fileExtension}`;
+    const r2Key = `${session.user.id}/${randomUUID()}.${fileExtension}`;
 
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
@@ -61,14 +62,19 @@ export async function POST(request: NextRequest) {
 
     try {
       // Upload to R2
-      const url = await uploadToR2(fileName, buffer, file.type);
+      const url = await uploadToR2(r2Key, buffer, file.type);
 
-      return NextResponse.json({
-        url,
+      // Save metadata to MongoDB
+      const document = await createDocument({
+        userId: session.user.id,
         fileName: file.name,
-        size: file.size,
-        type: file.type,
+        fileSize: file.size,
+        fileType: file.type,
+        fileUrl: url,
+        r2Key: r2Key,
       });
+
+      return NextResponse.json(document);
     } catch (r2Error: any) {
       // Provide helpful error message for R2 access issues
       if (r2Error.name === 'AccessDenied' || r2Error.Code === 'AccessDenied') {
@@ -83,4 +89,3 @@ export async function POST(request: NextRequest) {
     return handleError(error);
   }
 }
-

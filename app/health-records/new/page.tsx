@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { DEFAULT_TAGS, RECORD_TYPES } from '@/lib/constants/tags';
 import { getRecordTypeOptions } from '@/lib/constants/labels';
+import { DocumentUploader } from '@/components/documents/DocumentUploader';
 
 function NewHealthRecordContent() {
   const { data: session, status } = useSession();
@@ -17,6 +18,7 @@ function NewHealthRecordContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [patients, setPatients] = useState<Array<{ id: string; firstName: string; lastName?: string }>>([]);
+  const [uploadedDocument, setUploadedDocument] = useState<{ id: string; fileUrl: string; fileName: string } | null>(null);
 
   const [formData, setFormData] = useState({
     patientId: patientId,
@@ -46,7 +48,7 @@ function NewHealthRecordContent() {
       }
       const data = await response.json();
       setPatients(data);
-      
+
       if (patientId && !formData.patientId) {
         setFormData({ ...formData, patientId });
       }
@@ -62,6 +64,70 @@ function NewHealthRecordContent() {
         ? formData.tags.filter((t) => t !== tag)
         : [...formData.tags, tag],
     });
+  };
+
+  const handleDocumentUploadSuccess = async (doc: any) => {
+    setUploadedDocument(doc);
+    setFormData({
+      ...formData,
+      documentPath: doc.fileUrl,
+    });
+
+    // Auto-process document
+    try {
+      console.log('Starting auto-process for document:', doc.id);
+
+      // 1. Trigger OCR
+      const ocrRes = await fetch('/api/ocr/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+      if (!ocrRes.ok) throw new Error('OCR failed');
+      const ocrData = await ocrRes.json();
+      console.log('OCR Complete');
+
+      // 2. Trigger Unified Analysis (Classification + Tags + Source)
+      const analyzeRes = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+
+      if (analyzeRes.ok) {
+        const analyzeData = await analyzeRes.json();
+        console.log('Analysis Result:', analyzeData);
+
+        setFormData(prev => {
+          let newData = { ...prev };
+
+          // 1. Auto-select record type
+          if (analyzeData.classification) {
+            const options = getRecordTypeOptions();
+            const matchedOption = options.find(o => o.label === analyzeData.classification);
+            if (matchedOption) {
+              newData.recordType = matchedOption.value;
+            }
+          }
+
+          // 2. Auto-populate Source
+          if (analyzeData.source) {
+            newData.source = analyzeData.source;
+          }
+
+          // 3. Auto-populate Tags
+          if (analyzeData.tags && Array.isArray(analyzeData.tags)) {
+            newData.tags = Array.from(new Set([...newData.tags, ...analyzeData.tags]));
+          }
+
+          return newData;
+        });
+      }
+
+    } catch (error) {
+      console.error('Auto-processing failed:', error);
+      // Non-blocking error, user can still edit manually
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -160,6 +226,37 @@ function NewHealthRecordContent() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Attach Document (Optional)
+                </label>
+                {uploadedDocument ? (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-center">
+                      <svg className="w-6 h-6 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700 truncate max-w-xs">{uploadedDocument.fileName}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedDocument(null);
+                        setFormData({ ...formData, documentPath: '' });
+                      }}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <DocumentUploader onUploadSuccess={handleDocumentUploadSuccess} />
+                )}
+                {uploadedDocument && (
+                  <p className="mt-1 text-xs text-gray-500">File attached. It will be classified by AI after verification.</p>
+                )}
+              </div>
+
+              <div>
                 <label htmlFor="patientId" className="block text-sm font-medium text-gray-700 mb-2">
                   Patient *
                 </label>
@@ -223,11 +320,10 @@ function NewHealthRecordContent() {
                       key={tag}
                       type="button"
                       onClick={() => handleTagToggle(tag)}
-                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                        formData.tags.includes(tag)
-                          ? 'bg-[#0175C2] text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${formData.tags.includes(tag)
+                        ? 'bg-[#0175C2] text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                     >
                       {tag}
                     </button>
@@ -272,4 +368,3 @@ export default function NewHealthRecordPage() {
     </Suspense>
   );
 }
-

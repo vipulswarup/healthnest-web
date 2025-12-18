@@ -4,7 +4,8 @@
  */
 
 export const RECORD_TYPE_LABELS: Record<string, string> = {
-  'openEHR-EHR-OBSERVATION.lab_test.v1': 'Lab Test',
+  'openEHR-EHR-OBSERVATION.lab_test.v1': 'Pathology Test',
+  'openEHR-EHR-OBSERVATION.imaging_exam_result.v1': 'Radiology Scan',
   'openEHR-EHR-OBSERVATION.vital_signs.v2': 'Vital Signs',
   'openEHR-EHR-EVALUATION.problem_diagnosis.v1': 'Diagnosis',
   'openEHR-EHR-INSTRUCTION.medication_order.v1': 'Medication Order',
