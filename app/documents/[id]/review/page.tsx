@@ -115,58 +115,63 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         setIsSaving(false);
     };
 
+    const isProcessing = ocrStatus === 'PROCESSING' || aiStatus === 'PROCESSING';
+
     if (loading) return <div className="p-10 text-center">Loading...</div>;
     if (error) return <div className="p-10 text-center text-red-600">Error: {error}</div>;
     if (!document) return null;
 
     return (
-        <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-5xl mx-auto">
-                <div className="md:flex md:gap-6">
+        <div className={`min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}>
+                <div className="max-w-5xl mx-auto">
+                    <div className="md:flex md:gap-6">
 
-                    {/* Left: Document Preview */}
-                    <div className="md:w-1/2 mb-6 md:mb-0">
-                        <h2 className="text-xl font-bold text-gray-900 mb-4">Document Preview</h2>
-                        <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200 aspect-[3/4] relative">
-                            {/* Use iframe for PDF, img for others. Simplifying to img for this demo if it's image */}
-                            {document.fileType === 'application/pdf' ? (
-                                <iframe src={document.fileUrl} className="w-full h-full" />
-                            ) : (
-                                <img
-                                    src={document.fileUrl}
-                                    alt="Document"
-                                    className="w-full h-full object-contain bg-gray-900"
+                        {/* Left: Document Preview */}
+                        <div className="md:w-1/2 mb-6 md:mb-0">
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">Document Preview</h2>
+                            <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200 aspect-[3/4] relative">
+                                {/* Use iframe for PDF, img for others. Simplifying to img for this demo if it's image */}
+                                {document.fileType === 'application/pdf' ? (
+                                    <iframe src={document.fileUrl} className="w-full h-full" />
+                                ) : (
+                                    <img
+                                        src={document.fileUrl}
+                                        alt="Document"
+                                        className="w-full h-full object-contain bg-gray-900"
+                                    />
+                                )}
+                            </div>
+                            <div className="mt-4">
+                                <h3 className="font-semibold text-gray-700">OCR Text Content</h3>
+                                <div className="mt-2 p-3 bg-gray-100 rounded text-xs text-gray-600 h-40 overflow-y-auto whitespace-pre-wrap font-mono">
+                                    {document.ocrText || 'No text extracted yet...'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right: Processing & Review */}
+                        <div className="md:w-1/2">
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">Processing Status</h2>
+
+                            <OCRProgress label="Text Extraction (OCR)" status={ocrStatus} />
+                            <OCRProgress label="AI Analysis" status={aiStatus} />
+
+                            {(ocrStatus === 'COMPLETED' || document.ocrText) && (
+                                <AISuggestions
+                                    documentId={id}
+                                    initialClassification={document.classification}
+                                    initialTags={document.suggestedTags || []}
+                                    autoSelectedTags={document.approvedTags || []}
+                                    onSave={handleApprove}
+                                    isSaving={isSaving}
+                                    disabled={isProcessing}
                                 />
                             )}
                         </div>
-                        <div className="mt-4">
-                            <h3 className="font-semibold text-gray-700">OCR Text Content</h3>
-                            <div className="mt-2 p-3 bg-gray-100 rounded text-xs text-gray-600 h-40 overflow-y-auto whitespace-pre-wrap font-mono">
-                                {document.ocrText || 'No text extracted yet...'}
-                            </div>
-                        </div>
+
                     </div>
-
-                    {/* Right: Processing & Review */}
-                    <div className="md:w-1/2">
-                        <h2 className="text-xl font-bold text-gray-900 mb-4">Processing Status</h2>
-
-                        <OCRProgress label="Text Extraction (OCR)" status={ocrStatus} />
-                        <OCRProgress label="AI Analysis" status={aiStatus} />
-
-                        {(ocrStatus === 'COMPLETED' || document.ocrText) && (
-                            <AISuggestions
-                                documentId={id}
-                                initialClassification={document.classification}
-                                initialTags={document.suggestedTags}
-                                onSave={handleApprove}
-                                isSaving={isSaving}
-                            />
-                        )}
-                    </div>
-
                 </div>
             </div>
-        </div>
+        </>
     );
 }

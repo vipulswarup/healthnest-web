@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "init-db": "tsx scripts/init-db.ts"
+    "init-db": "tsx scripts/init-db.ts",
+    "init-categories": "tsx scripts/init-health-record-categories.ts",
+    "init-sources": "tsx scripts/init-healthcare-sources.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.926.0",

@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getRecordTypeLabel } from '@/lib/constants/labels';
+import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 
 interface EmergencyContact {
   name: string;
@@ -42,9 +42,15 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [healthRecords, setHealthRecords] = useState<HealthRecord[]>([]);
+  const [categories, setCategories] = useState<HealthRecordCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const getRecordTypeLabel = (code: string): string => {
+    const category = categories.find(cat => cat.code === code);
+    return category?.displayName || code;
+  };
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -56,7 +62,20 @@ export default function PatientDetailPage() {
 
     fetchPatient();
     fetchHealthRecords();
+    fetchCategories();
   }, [session, status, router, patientId]);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/health-record-categories');
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  };
 
   const fetchPatient = async () => {
     try {

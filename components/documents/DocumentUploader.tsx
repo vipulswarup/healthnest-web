@@ -116,7 +116,7 @@ export function DocumentUploader({ onUploadSuccess }: DocumentUploaderProps) {
                             Drag and drop your file here, or click to select
                         </p>
                         <p className="mt-1 text-xs text-gray-500">
-                            PDF, JPG, PNG up to 10MB
+                            PDF, JPG, PNG up to 50MB
                         </p>
                     </div>
                 )}

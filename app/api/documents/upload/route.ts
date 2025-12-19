@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
     if (file.size > maxSize) {
-      throw new AppError('File size exceeds 10MB limit', 400);
+      throw new AppError('File size exceeds 50MB limit', 400);
     }
 
     // Check if R2 is configured

@@ -41,6 +41,18 @@ export async function initializeIndexes() {
   await medicationRemindersCollection.createIndex({ medicationId: 1 });
   await medicationRemindersCollection.createIndex({ isEnabled: 1, scheduledTime: 1 });
 
+  // Health record categories collection indexes
+  const healthRecordCategoriesCollection = db.collection('health_record_categories');
+  await healthRecordCategoriesCollection.createIndex({ code: 1 }, { unique: true });
+  await healthRecordCategoriesCollection.createIndex({ displayName: 1 });
+  await healthRecordCategoriesCollection.createIndex({ isActive: 1 });
+
+  // Healthcare sources collection indexes
+  const healthcareSourcesCollection = db.collection('healthcare_sources');
+  await healthcareSourcesCollection.createIndex({ preferredName: 1 }, { unique: true });
+  await healthcareSourcesCollection.createIndex({ aliases: 1 });
+  await healthcareSourcesCollection.createIndex({ isActive: 1 });
+
   console.log('MongoDB indexes initialized successfully');
 }
 

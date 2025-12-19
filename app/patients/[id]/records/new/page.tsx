@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { getRecordTypeOptions } from '@/lib/constants/labels';
+import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 
 export default function NewHealthRecordPage() {
   const { data: session, status } = useSession();
@@ -17,9 +17,10 @@ export default function NewHealthRecordPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [uploadedFile, setUploadedFile] = useState<{ url: string; name: string } | null>(null);
+  const [categories, setCategories] = useState<HealthRecordCategory[]>([]);
 
   const [formData, setFormData] = useState({
-    recordType: 'openEHR-EHR-OBSERVATION.lab_test.v1',
+    recordType: '',
     source: '',
     tags: '',
     notes: '',
@@ -31,7 +32,24 @@ export default function NewHealthRecordPage() {
     if (!session) {
       router.push('/auth/signin');
     }
+    fetchCategories();
   }, [session, status, router]);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/health-record-categories');
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+        // Set default record type to first category if none selected
+        if (!formData.recordType && data.length > 0) {
+          setFormData(prev => ({ ...prev, recordType: data[0].code }));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,9 +195,10 @@ export default function NewHealthRecordPage() {
                   onChange={(e) => setFormData({ ...formData, recordType: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
                 >
-                  {getRecordTypeOptions().map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                  <option value="">Select a record type</option>
+                  {categories.map((category) => (
+                    <option key={category.code} value={category.code}>
+                      {category.displayName}
                     </option>
                   ))}
                 </select>

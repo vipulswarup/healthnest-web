@@ -48,21 +48,68 @@ export async function extractTextFromImage(input: string, isR2Key: boolean = fal
 
         // 2. Convert PDF if necessary
         if (fileExtension.toLowerCase() === '.pdf') {
-            const outputFileName = `${randomUUID()}.tiff`;
-            const outputFilePath = path.join(tempDir, outputFileName);
+            const outputBaseName = randomUUID();
+            const outputBasePath = path.join(tempDir, outputBaseName);
 
-            console.log(`Converting PDF to TIFF: ${outputFilePath}...`);
+            console.log(`Converting PDF to TIFF: ${outputBasePath}...`);
 
-            // Simplify mounts: only mount the /tmp directory to /tmp
-            // Order matters for ImageMagick: options -> input -> output
-            // We use the full path /tmp/${fileName} which exists in both host and container since we map /tmp to /tmp
-            const convertCommand = `docker run --rm -v "${tempDir}":"${tempDir}" dpokidov/imagemagick magick -density 300 "${localFilePath}" -depth 8 -strip -background white -alpha off "${outputFilePath}"`;
+            // Use pdftocairo from poppler-utils to convert PDF to TIFF
+            // pdftocairo is more reliable than pdftoppm for single-page conversion
+            // -tiff: output format
+            // -r 300: resolution (300 DPI)
+            // -f 1 -l 1: first page only
+            // Output pattern: basename-1.tiff (page number appended)
+            const convertCommand = `docker run --rm -v "${tempDir}":"${tempDir}" minidocks/poppler pdftocairo -tiff -r 300 -f 1 -l 1 "${localFilePath}" "${outputBasePath}"`;
 
             console.log(`Running Conversion: ${convertCommand}`);
-            const { stdout, stderr } = await execAsync(convertCommand);
-            if (stderr) console.warn('Conversion Stderr:', stderr); // ImageMagick might warn but succeed
+            try {
+                const { stdout, stderr } = await execAsync(convertCommand);
+                if (stdout) console.log('Conversion Stdout:', stdout);
+                if (stderr && !stderr.includes('Writing')) {
+                    console.warn('Conversion Stderr:', stderr);
+                }
+            } catch (error: any) {
+                console.error('Conversion command failed:', error);
+                throw new Error(`PDF conversion command failed: ${error.message}`);
+            }
 
-            processedFilePath = outputFilePath; // Update path for OCR
+            // pdftocairo outputs files with pattern: basename-page.tif or basename-page.tiff
+            // With -f 1 -l 1, it may create: basename-1.tif, basename-01.tif, or basename-1.tiff
+            // Check for various page number formats (1, 01) and extensions (.tif, .tiff)
+            const possiblePaths = [
+                path.join(tempDir, `${outputBaseName}-1.tif`),
+                path.join(tempDir, `${outputBaseName}-01.tif`),
+                path.join(tempDir, `${outputBaseName}-1.tiff`),
+                path.join(tempDir, `${outputBaseName}-01.tiff`),
+            ];
+            
+            let foundPath: string | null = null;
+            for (const possiblePath of possiblePaths) {
+                if (fs.existsSync(possiblePath)) {
+                    foundPath = possiblePath;
+                    break;
+                }
+            }
+            
+            if (!foundPath) {
+                // If exact matches fail, search for any file matching the pattern
+                const files = await fs.promises.readdir(tempDir);
+                const matchingFiles = files.filter(f => 
+                    f.startsWith(outputBaseName) && 
+                    (f.endsWith('.tif') || f.endsWith('.tiff'))
+                );
+                
+                if (matchingFiles.length > 0) {
+                    // Use the first matching file
+                    foundPath = path.join(tempDir, matchingFiles[0]);
+                    console.log(`Found output file: ${foundPath}`);
+                } else {
+                    console.error(`Expected file not found. Files matching base name: ${files.filter(f => f.startsWith(outputBaseName)).join(', ')}`);
+                    throw new Error(`PDF conversion failed: output file not found. Checked: ${possiblePaths.join(', ')}`);
+                }
+            }
+            
+            processedFilePath = foundPath;
         }
 
         // 3. Run Tesseract via Docker

@@ -5,6 +5,19 @@ import { getDocumentById, updateDocumentStatus } from '@/lib/services/document.s
 import { classifyDocument } from '@/lib/services/ai.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 
+function limitToFirstNWords(text: string, maxWords: number): string {
+    if (!text || text.trim().length === 0) {
+        return text;
+    }
+    
+    const words = text.trim().split(/\s+/);
+    if (words.length <= maxWords) {
+        return text;
+    }
+    
+    return words.slice(0, maxWords).join(' ');
+}
+
 export async function POST(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
@@ -36,7 +49,9 @@ export async function POST(request: NextRequest) {
         await updateDocumentStatus(documentId, { aiStatus: 'PROCESSING' });
 
         try {
-            const result = await classifyDocument(textToAnalyze);
+            // Limit to first 1000 words to save AI costs
+            const limitedText = limitToFirstNWords(textToAnalyze, 1000);
+            const result = await classifyDocument(limitedText);
 
             await updateDocumentStatus(documentId, {
                 aiStatus: 'COMPLETED',

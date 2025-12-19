@@ -3,6 +3,7 @@ import { classificationPrompt } from './prompts/classification.prompt';
 import { extractionPrompt } from './prompts/extraction.prompt';
 import { taggingPrompt } from './prompts/tagging.prompt';
 import { analysisPrompt } from './prompts/analysis.prompt';
+import { DEFAULT_TAGS } from '../constants/tags';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.3-70b-versatile';
@@ -66,7 +67,17 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
 
     const response = await callGroq(text, dynamicSystemPrompt);
     try {
-        return JSON.parse(response);
+        const result = JSON.parse(response);
+        // Use all tags returned by AI, normalize them
+        const aiTags: string[] = result.tags || [];
+        const normalizedTags = aiTags
+            .map(tag => normalizeTag(String(tag)))
+            .filter((tag, index, arr) => tag && arr.indexOf(tag) === index); // Remove empty and duplicates
+        
+        return {
+            ...result,
+            tags: normalizedTags
+        };
     } catch (e) {
         console.error("Failed to parse AI analysis response", response);
         return {
@@ -107,13 +118,99 @@ export async function extractData(text: string, documentType: string): Promise<R
     }
 }
 
-export async function suggestTags(text: string): Promise<string[]> {
+function normalizeTag(tag: string): string {
+    return tag.toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+function matchTagToExisting(aiTag: string): string | null {
+    const normalized = normalizeTag(aiTag);
+    const defaultTagsLower = DEFAULT_TAGS.map(t => t.toLowerCase());
+    
+    // Exact match
+    if (defaultTagsLower.includes(normalized)) {
+        return DEFAULT_TAGS[defaultTagsLower.indexOf(normalized)];
+    }
+    
+    // Fuzzy matching for common variations
+    const tagVariations: Record<string, string> = {
+        'lab': 'lab_report',
+        'laboratory': 'lab_report',
+        'lab_test': 'lab_report',
+        'lab_result': 'lab_report',
+        'scan': 'scan_result',
+        'imaging': 'scan_result',
+        'radiology': 'scan_result',
+        'xray': 'scan_result',
+        'ct_scan': 'scan_result',
+        'mri': 'scan_result',
+        'prescription': 'prescription',
+        'meds': 'medication',
+        'medication': 'medication',
+        'drug': 'medication',
+        'discharge': 'discharge_summary',
+        'discharge_note': 'discharge_summary',
+        'consult': 'consultation',
+        'consultation': 'consultation',
+        'visit': 'consultation',
+        'appointment': 'consultation',
+        'symptom': 'symptom',
+        'symptoms': 'symptom',
+        'vitals': 'vital_signs',
+        'vital': 'vital_signs',
+        'vital_sign': 'vital_signs',
+    };
+    
+    if (tagVariations[normalized]) {
+        return tagVariations[normalized];
+    }
+    
+    // Check if tag contains any default tag as substring
+    for (const defaultTag of DEFAULT_TAGS) {
+        const defaultTagLower = defaultTag.toLowerCase();
+        if (normalized.includes(defaultTagLower) || defaultTagLower.includes(normalized)) {
+            return defaultTag;
+        }
+    }
+    
+    return null;
+}
+
+export interface TagSuggestionResult {
+    matchedTags: string[];
+    newTags: string[];
+    allTags: string[];
+}
+
+export async function suggestTags(text: string): Promise<TagSuggestionResult> {
     const response = await callGroq(text, taggingPrompt);
     try {
         const data = JSON.parse(response);
-        return data.tags || [];
+        const aiTags: string[] = data.tags || [];
+        
+        // Normalize all tags and remove duplicates
+        const normalizedTags = aiTags
+            .map(tag => normalizeTag(String(tag)))
+            .filter((tag, index, arr) => tag && arr.indexOf(tag) === index); // Remove empty and duplicates
+        
+        // For backward compatibility, still identify matched tags
+        const matchedTags = normalizedTags.filter(tag => 
+            DEFAULT_TAGS.some(defaultTag => defaultTag.toLowerCase() === tag.toLowerCase())
+        );
+        const newTags = normalizedTags.filter(tag => 
+            !matchedTags.includes(tag)
+        );
+        
+        return {
+            matchedTags,
+            newTags,
+            allTags: normalizedTags
+        };
     } catch (e) {
         console.error("Failed to parse AI tagging response", response);
-        return [];
+        return {
+            matchedTags: [],
+            newTags: [],
+            allTags: []
+        };
     }
 }
