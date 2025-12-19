@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
         query.$text = { $search: keyword };
         // Text search returns results sorted by relevance score
         const records = await healthRecordsCollection
-          .find(query, { score: { $meta: 'textScore' } })
+          .find(query)
           .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
           .toArray();
         

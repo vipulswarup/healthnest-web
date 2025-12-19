@@ -313,8 +313,8 @@ function NewHealthRecordContent() {
         const allTags = analyzeData.tags && Array.isArray(analyzeData.tags) ? analyzeData.tags : [];
         // Normalize and deduplicate tags
         const normalizedTags = allTags
-          .map(tag => String(tag).toLowerCase().trim().replace(/\s+/g, '_'))
-          .filter((tag, index, arr) => tag && arr.indexOf(tag) === index); // Remove empty and duplicates
+          .map((tag: any) => String(tag).toLowerCase().trim().replace(/\s+/g, '_'))
+          .filter((tag: string, index: number, arr: string[]) => tag && arr.indexOf(tag) === index); // Remove empty and duplicates
         
         console.log('AI Tags:', allTags);
         console.log('Normalized Tags:', normalizedTags);
