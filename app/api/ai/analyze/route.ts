@@ -50,7 +50,23 @@ export async function POST(request: NextRequest) {
         try {
             // Limit to first 1000 words to save AI costs
             const limitedText = limitToFirstNWords(document.ocrText, 1000);
+            
+            // DEBUG LOGGING - Input to AI
+            console.log('\n--- AI ANALYSIS INPUT ---');
+            console.log('Document ID:', documentId);
+            console.log('OCR Text Length:', document.ocrText.length);
+            console.log('Limited Text Length:', limitedText.length);
+            console.log('First 200 chars of OCR:', document.ocrText.substring(0, 200));
+            console.log('-----------------------\n');
+            
             const result = await analyzeDocument(limitedText);
+
+            // DEBUG LOGGING - After AI Analysis
+            console.log('\n--- AI ANALYSIS OUTPUT ---');
+            console.log('Result:', JSON.stringify(result, null, 2));
+            console.log('Document Date from AI:', result.documentDate);
+            console.log('Document Date type:', typeof result.documentDate);
+            console.log('-----------------------\n');
 
             // Normalize doctor name if provided
             let normalizedDoctorName = result.doctorName || null;
@@ -74,7 +90,8 @@ export async function POST(request: NextRequest) {
                 extractedData: { 
                     ...(document.extractedData || {}), 
                     source: result.source,
-                    doctorName: normalizedDoctorName
+                    doctorName: normalizedDoctorName,
+                    documentDate: result.documentDate
                 }
             });
 

@@ -13,6 +13,7 @@ export interface AnalysisResult {
     confidence: number;
     source: string | null;
     doctorName: string | null;
+    documentDate: string | null;
     tags: string[];
 }
 
@@ -53,7 +54,14 @@ async function callGroq(prompt: string, systemPrompt: string): Promise<string> {
         }
 
         const data = await response.json();
-        return data.choices[0]?.message?.content || '{}';
+        const aiResponse = data.choices[0]?.message?.content || '{}';
+        
+        // DEBUG LOGGING - Raw AI Response
+        console.log('\n--- GROQ AI RESPONSE ---');
+        console.log('Raw Response:', aiResponse);
+        console.log('-----------------------\n');
+        
+        return aiResponse;
     } catch (error) {
         console.error('AI Service Error:', error);
         throw new AppError('Failed to process request with AI service', 502);
@@ -69,6 +77,19 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     const response = await callGroq(text, dynamicSystemPrompt);
     try {
         const result = JSON.parse(response);
+        
+        // DEBUG LOGGING - Parsed Result
+        console.log('\n--- AI ANALYSIS RESULT ---');
+        console.log('Classification:', result.classification);
+        console.log('Confidence:', result.confidence);
+        console.log('Source:', result.source);
+        console.log('Doctor Name:', result.doctorName);
+        console.log('Document Date (raw):', result.documentDate);
+        console.log('Document Date (type):', typeof result.documentDate);
+        console.log('Tags:', result.tags);
+        console.log('Full Result:', JSON.stringify(result, null, 2));
+        console.log('-----------------------\n');
+        
         // Use all tags returned by AI, normalize them
         const aiTags: string[] = result.tags || [];
         const normalizedTags = aiTags
@@ -78,15 +99,19 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
         return {
             ...result,
             doctorName: result.doctorName || null,
+            documentDate: result.documentDate || null,
             tags: normalizedTags
         };
     } catch (e) {
-        console.error("Failed to parse AI analysis response", response);
+        console.error("Failed to parse AI analysis response");
+        console.error("Raw response:", response);
+        console.error("Parse error:", e);
         return {
             classification: "Unknown",
             confidence: 0,
             source: null,
             doctorName: null,
+            documentDate: null,
             tags: []
         };
     }

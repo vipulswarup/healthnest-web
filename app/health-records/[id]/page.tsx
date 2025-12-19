@@ -14,6 +14,7 @@ interface HealthRecord {
   recordType: string;
   source: string;
   doctorName?: string;
+  documentDate?: string;
   createdAt: string;
   updatedAt: string;
   tags: string[];
@@ -132,6 +133,18 @@ export default function HealthRecordDetailPage() {
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatDateOnly = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
       });
     } catch {
       return dateString;
@@ -258,6 +271,13 @@ export default function HealthRecordDetailPage() {
                   <div>
                     <h3 className="text-sm font-medium text-gray-500 mb-2">Doctor</h3>
                     <p className="text-gray-900">{record.doctorName}</p>
+                  </div>
+                )}
+
+                {record.documentDate && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">Document Date</h3>
+                    <p className="text-gray-900">{formatDateOnly(record.documentDate)}</p>
                   </div>
                 )}
 

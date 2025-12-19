@@ -12,6 +12,7 @@ const updateHealthRecordSchema = z.object({
   tags: z.array(z.string()).optional(),
   source: z.string().optional(),
   doctorName: z.string().optional(),
+  documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
   documentPath: z.string().optional(),
   hospitalSystemName: z.string().optional(),
   hospitalIdentifierType: z.string().optional(),
@@ -116,8 +117,23 @@ export async function PUT(
       throw new AppError('Unauthorized access to this record', 403);
     }
 
+    // Parse document date if provided
+    const updateFields: any = { ...validationResult.data };
+    if (updateFields.documentDate) {
+      try {
+        const parsedDate = new Date(updateFields.documentDate);
+        if (!isNaN(parsedDate.getTime())) {
+          updateFields.documentDate = parsedDate;
+        } else {
+          delete updateFields.documentDate;
+        }
+      } catch (err) {
+        delete updateFields.documentDate;
+      }
+    }
+
     const updateData = {
-      ...validationResult.data,
+      ...updateFields,
       updatedAt: new Date(),
     };
 

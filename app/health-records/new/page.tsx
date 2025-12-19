@@ -42,6 +42,7 @@ function NewHealthRecordContent() {
     classification?: string;
     source?: string;
     doctorName?: string;
+    documentDate?: string;
     tags?: string[];
   } | null>(null);
 
@@ -50,6 +51,7 @@ function NewHealthRecordContent() {
     recordType: '',
     source: '',
     doctorName: '',
+    documentDate: '',
     tags: [] as string[],
     data: {} as Record<string, any>,
     documentPath: '',
@@ -372,6 +374,7 @@ function NewHealthRecordContent() {
           recordType: matchedCategory?.code || prev.recordType,
           source: matchedSource,
           doctorName: matchedDoctorName,
+          documentDate: analyzeData.documentDate || prev.documentDate,
           // Use all AI-suggested tags
           tags: normalizedTags.length > 0 ? normalizedTags : prev.tags,
         }));
@@ -646,6 +649,22 @@ function NewHealthRecordContent() {
               : sources.length === 0 
                 ? 'No sources available. Start typing to create a new source.' 
                 : 'Start typing to search existing sources or enter a new one'}
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="documentDate" className="block text-sm font-medium text-gray-700 mb-2">
+            Document Date
+          </label>
+          <input
+            type="date"
+            id="documentDate"
+            value={formData.documentDate}
+            onChange={(e) => setFormData({ ...formData, documentDate: e.target.value })}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Date when the document was created, written, or reported (e.g., prescription date, test report date)
           </p>
         </div>
 

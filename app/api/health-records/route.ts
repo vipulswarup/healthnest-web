@@ -15,6 +15,7 @@ const createHealthRecordSchema = z.object({
   tags: z.array(z.string()).optional(),
   source: z.string().min(1, 'Source is required'),
   doctorName: z.string().optional(),
+  documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
   documentPath: z.string().optional(),
   ocrText: z.string().optional(),
   documentId: z.string().optional(),
@@ -247,6 +248,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Parse document date if provided
+    let documentDate: Date | undefined;
+    if (data.documentDate) {
+      try {
+        documentDate = new Date(data.documentDate);
+        // Validate date
+        if (isNaN(documentDate.getTime())) {
+          documentDate = undefined;
+        }
+      } catch (err) {
+        console.warn('Invalid document date provided:', err);
+      }
+    }
+
     const newRecord = {
       patientId: data.patientId,
       recordType: data.recordType,
@@ -254,6 +269,7 @@ export async function POST(request: NextRequest) {
       tags: data.tags || [],
       source: data.source,
       doctorName: finalDoctorName,
+      documentDate: documentDate,
       documentPath: data.documentPath || '',
       ocrText: ocrText,
       hospitalSystemName: data.hospitalSystemName || '',
