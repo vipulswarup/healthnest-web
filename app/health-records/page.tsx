@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
+import { HealthcareSource } from '@/lib/types/healthcare-source.types';
 
 interface HealthRecord {
   id: string;
@@ -29,9 +30,20 @@ export default function HealthRecordsPage() {
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [patients, setPatients] = useState<Record<string, Patient>>({});
   const [categories, setCategories] = useState<HealthRecordCategory[]>([]);
+  const [sources, setSources] = useState<HealthcareSource[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [recordsLoading, setRecordsLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Search and filter state
+  const [keyword, setKeyword] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterRecordType, setFilterRecordType] = useState('');
+  const [filterTag, setFilterTag] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const getRecordTypeLabel = (code: string): string => {
     const category = categories.find(cat => cat.code === code);
@@ -48,6 +60,7 @@ export default function HealthRecordsPage() {
 
     fetchPatients();
     fetchCategories();
+    fetchSources();
   }, [session, status, router]);
 
   const fetchCategories = async () => {
@@ -62,13 +75,25 @@ export default function HealthRecordsPage() {
     }
   };
 
-  useEffect(() => {
-    if (selectedPatientId) {
-      fetchRecords(selectedPatientId);
-    } else {
-      setRecords([]);
+  const fetchSources = async () => {
+    try {
+      const response = await fetch('/api/healthcare-sources');
+      if (response.ok) {
+        const data = await response.json();
+        setSources(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch sources:', err);
     }
-  }, [selectedPatientId]);
+  };
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchRecords();
+    }, keyword ? 300 : 0); // Debounce keyword search by 300ms
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedPatientId, keyword, filterSource, filterRecordType, filterTag, startDate, endDate]);
 
   const fetchPatients = async () => {
     try {
@@ -83,7 +108,6 @@ export default function HealthRecordsPage() {
       });
       setPatients(patientsMap);
       
-      // Auto-select first patient if available
       if (data.length > 0 && !selectedPatientId) {
         setSelectedPatientId(data[0].id);
       }
@@ -94,10 +118,34 @@ export default function HealthRecordsPage() {
     }
   };
 
-  const fetchRecords = async (patientId: string) => {
+  const fetchRecords = async () => {
     try {
-      setLoading(true);
-      const response = await fetch(`/api/health-records?patientId=${patientId}`);
+      setRecordsLoading(true);
+      const params = new URLSearchParams();
+      
+      if (selectedPatientId) {
+        params.append('patientId', selectedPatientId);
+      }
+      if (keyword) {
+        params.append('keyword', keyword);
+      }
+      if (filterSource) {
+        params.append('source', filterSource);
+      }
+      if (filterRecordType) {
+        params.append('recordType', filterRecordType);
+      }
+      if (filterTag) {
+        params.append('tag', filterTag);
+      }
+      if (startDate) {
+        params.append('startDate', startDate);
+      }
+      if (endDate) {
+        params.append('endDate', endDate);
+      }
+
+      const response = await fetch(`/api/health-records?${params.toString()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch health records');
       }
@@ -106,7 +154,7 @@ export default function HealthRecordsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
-      setLoading(false);
+      setRecordsLoading(false);
     }
   };
 
@@ -124,15 +172,32 @@ export default function HealthRecordsPage() {
         throw new Error('Failed to delete health record');
       }
 
-      if (selectedPatientId) {
-        fetchRecords(selectedPatientId);
-      }
+      fetchRecords();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete health record');
     }
   };
 
-  if (status === 'loading' || loading) {
+  const handleTagClick = (tag: string) => {
+    setFilterTag(tag);
+    setShowFilters(true);
+  };
+
+  const clearFilters = () => {
+    setKeyword('');
+    setFilterSource('');
+    setFilterRecordType('');
+    setFilterTag('');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  const hasActiveFilters = keyword || filterSource || filterRecordType || filterTag || startDate || endDate;
+
+  // Get all unique tags from records for filter dropdown
+  const allTags = Array.from(new Set(records.flatMap(r => r.tags))).sort();
+
+  if (status === 'loading' || (loading && Object.keys(patients).length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -158,7 +223,6 @@ export default function HealthRecordsPage() {
       return dateString;
     }
   };
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -235,22 +299,222 @@ export default function HealthRecordsPage() {
             </div>
           ) : (
             <>
-              <div className="mb-6">
-                <label htmlFor="patient" className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Patient
-                </label>
-                <select
-                  id="patient"
-                  value={selectedPatientId}
-                  onChange={(e) => setSelectedPatientId(e.target.value)}
-                  className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
-                >
-                  {Object.values(patients).map((patient) => (
-                    <option key={patient.id} value={patient.id}>
-                      {patient.firstName} {patient.lastName || ''}
-                    </option>
-                  ))}
-                </select>
+              <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+                <div className="mb-4">
+                  <label htmlFor="patient" className="block text-sm font-medium text-gray-700 mb-2">
+                    Patient
+                  </label>
+                  <select
+                    id="patient"
+                    value={selectedPatientId}
+                    onChange={(e) => setSelectedPatientId(e.target.value)}
+                    className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                  >
+                    <option value="">All Patients</option>
+                    {Object.values(patients).map((patient) => (
+                      <option key={patient.id} value={patient.id}>
+                        {patient.firstName} {patient.lastName || ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        placeholder="Search records..."
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      />
+                      {recordsLoading && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#0175C2]"></div>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowFilters(!showFilters)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        showFilters || hasActiveFilters
+                          ? 'bg-[#0175C2] text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Filters {hasActiveFilters && `(${[keyword, filterSource, filterRecordType, filterTag, startDate, endDate].filter(Boolean).length})`}
+                    </button>
+                    {hasActiveFilters && (
+                      <button
+                        onClick={clearFilters}
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {showFilters && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+                    <div>
+                      <label htmlFor="filterSource" className="block text-sm font-medium text-gray-700 mb-2">
+                        Source
+                      </label>
+                      <select
+                        id="filterSource"
+                        value={filterSource}
+                        onChange={(e) => setFilterSource(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      >
+                        <option value="">All Sources</option>
+                        {sources.map((source) => (
+                          <option key={source.id || source._id} value={source.preferredName}>
+                            {source.preferredName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="filterRecordType" className="block text-sm font-medium text-gray-700 mb-2">
+                        Record Type
+                      </label>
+                      <select
+                        id="filterRecordType"
+                        value={filterRecordType}
+                        onChange={(e) => setFilterRecordType(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      >
+                        <option value="">All Types</option>
+                        {categories.map((category) => (
+                          <option key={category.code} value={category.code}>
+                            {category.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="filterTag" className="block text-sm font-medium text-gray-700 mb-2">
+                        Tag
+                      </label>
+                      <select
+                        id="filterTag"
+                        value={filterTag}
+                        onChange={(e) => setFilterTag(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      >
+                        <option value="">All Tags</option>
+                        {allTags.map((tag) => (
+                          <option key={tag} value={tag}>
+                            {tag}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        id="startDate"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        id="endDate"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {hasActiveFilters && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex flex-wrap gap-2">
+                      {keyword && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                          Keyword: {keyword}
+                          <button
+                            onClick={() => setKeyword('')}
+                            className="ml-2 hover:text-blue-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                      {filterSource && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                          Source: {filterSource}
+                          <button
+                            onClick={() => setFilterSource('')}
+                            className="ml-2 hover:text-green-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                      {filterRecordType && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">
+                          Type: {getRecordTypeLabel(filterRecordType)}
+                          <button
+                            onClick={() => setFilterRecordType('')}
+                            className="ml-2 hover:text-purple-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                      {filterTag && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-yellow-100 text-yellow-800">
+                          Tag: {filterTag}
+                          <button
+                            onClick={() => setFilterTag('')}
+                            className="ml-2 hover:text-yellow-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                      {startDate && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-800">
+                          From: {startDate}
+                          <button
+                            onClick={() => setStartDate('')}
+                            className="ml-2 hover:text-gray-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                      {endDate && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-800">
+                          To: {endDate}
+                          <button
+                            onClick={() => setEndDate('')}
+                            className="ml-2 hover:text-gray-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {error && (
@@ -263,12 +527,14 @@ export default function HealthRecordsPage() {
                 <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
                   <div className="text-6xl mb-4">📋</div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    No health records yet
+                    {hasActiveFilters ? 'No records match your filters' : 'No health records yet'}
                   </h3>
                   <p className="text-gray-600 mb-6">
-                    Start by adding a health record for this patient.
+                    {hasActiveFilters 
+                      ? 'Try adjusting your search criteria or clear filters to see all records.'
+                      : 'Start by adding a health record.'}
                   </p>
-                  {selectedPatientId && (
+                  {selectedPatientId && !hasActiveFilters && (
                     <Link
                       href={`/health-records/new?patientId=${selectedPatientId}`}
                       className="inline-block bg-[#0175C2] hover:bg-[#015a96] text-white px-6 py-3 rounded-lg font-medium transition-colors"
@@ -276,9 +542,20 @@ export default function HealthRecordsPage() {
                       Add Health Record
                     </Link>
                   )}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="inline-block bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-medium transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <div className="text-sm text-gray-600 mb-2">
+                    Found {records.length} record{records.length !== 1 ? 's' : ''}
+                  </div>
                   {records.map((record) => (
                     <div
                       key={record.id}
@@ -299,18 +576,24 @@ export default function HealthRecordsPage() {
                           <p className="text-sm text-gray-600 mb-2">
                             Source: {record.source}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-500 mb-2">
                             {formatDate(record.createdAt)}
+                            {patients[record.patientId] && (
+                              <span className="ml-2">
+                                • {patients[record.patientId].firstName} {patients[record.patientId].lastName || ''}
+                              </span>
+                            )}
                           </p>
                           {record.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2 mt-3">
                               {record.tags.map((tag, idx) => (
-                                <span
+                                <button
                                   key={idx}
-                                  className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded"
+                                  onClick={() => handleTagClick(tag)}
+                                  className="text-xs bg-gray-100 hover:bg-[#0175C2] hover:text-white text-gray-700 px-2 py-1 rounded transition-colors cursor-pointer"
                                 >
                                   {tag}
-                                </span>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -341,4 +624,3 @@ export default function HealthRecordsPage() {
     </div>
   );
 }
-

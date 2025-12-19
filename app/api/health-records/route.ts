@@ -13,6 +13,8 @@ const createHealthRecordSchema = z.object({
   tags: z.array(z.string()).optional(),
   source: z.string().min(1, 'Source is required'),
   documentPath: z.string().optional(),
+  ocrText: z.string().optional(),
+  documentId: z.string().optional(),
   hospitalSystemName: z.string().optional(),
   hospitalIdentifierType: z.string().optional(),
   hospitalIdentifierValue: z.string().optional(),
@@ -28,32 +30,140 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get('patientId');
-
-    if (!patientId) {
-      throw new AppError('patientId query parameter is required', 400);
-    }
+    const keyword = searchParams.get('keyword') || '';
+    const source = searchParams.get('source') || '';
+    const recordType = searchParams.get('recordType') || '';
+    const tag = searchParams.get('tag') || '';
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
 
     const db = await getDatabase();
     const patientsCollection = db.collection('patients');
     const healthRecordsCollection = db.collection('health_records');
 
-    // Verify patient belongs to user
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(patientId),
-      userId: session.user.id,
-    });
+    // Build query
+    const query: any = {};
 
-    if (!patient) {
-      throw new AppError('Patient not found', 404);
+    // If patientId is provided, verify it belongs to user and filter by it
+    if (patientId) {
+      if (!ObjectId.isValid(patientId)) {
+        throw new AppError('Invalid patient ID', 400);
+      }
+      const patient = await patientsCollection.findOne({
+        _id: new ObjectId(patientId),
+        userId: session.user.id,
+      });
+
+      if (!patient) {
+        throw new AppError('Patient not found', 404);
+      }
+      query.patientId = patientId;
+    } else {
+      // If no patientId, get all patient IDs for this user
+      const userPatients = await patientsCollection
+        .find({ userId: session.user.id })
+        .project({ _id: 1 })
+        .toArray();
+      
+      if (userPatients.length === 0) {
+        return NextResponse.json([]);
+      }
+      
+      query.patientId = { $in: userPatients.map(p => p._id.toString()) };
+    }
+
+    // Filter by source
+    if (source) {
+      query.source = { $regex: source, $options: 'i' };
+    }
+
+    // Filter by recordType
+    if (recordType) {
+      query.recordType = recordType;
+    }
+
+    // Filter by tag
+    if (tag) {
+      query.tags = { $in: [tag] };
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Include entire end date
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // Full-text keyword search using MongoDB text index
+    if (keyword) {
+      // Use MongoDB $text search if text index exists, otherwise fallback to regex
+      try {
+        query.$text = { $search: keyword };
+        // Text search returns results sorted by relevance score
+        const records = await healthRecordsCollection
+          .find(query, { score: { $meta: 'textScore' } })
+          .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
+          .toArray();
+        
+        return NextResponse.json(
+          records.map((record) => ({
+            ...record,
+            id: record._id.toString(),
+          }))
+        );
+      } catch (textSearchError) {
+        // Fallback to regex search if text index doesn't exist or fails
+        console.warn('Text index search failed, using regex fallback:', textSearchError);
+        const keywordRegex = { $regex: keyword, $options: 'i' };
+        query.$or = [
+          { source: keywordRegex },
+          { tags: { $in: [new RegExp(keyword, 'i')] } },
+          { recordType: keywordRegex },
+          { ocrText: keywordRegex },
+        ];
+      }
     }
 
     const records = await healthRecordsCollection
-      .find({ patientId })
+      .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 
+    // If keyword search with regex fallback, also filter records by searching in data object
+    let filteredRecords = records;
+    if (keyword && !query.$text) {
+      const keywordLower = keyword.toLowerCase();
+      filteredRecords = records.filter(record => {
+        // Search in source
+        if (record.source?.toLowerCase().includes(keywordLower)) return true;
+        
+        // Search in tags
+        if (record.tags?.some((t: string) => t.toLowerCase().includes(keywordLower))) return true;
+        
+        // Search in recordType
+        if (record.recordType?.toLowerCase().includes(keywordLower)) return true;
+        
+        // Search in OCR text
+        if (record.ocrText?.toLowerCase().includes(keywordLower)) return true;
+        
+        // Search in data object (stringified)
+        if (record.data) {
+          const dataString = JSON.stringify(record.data).toLowerCase();
+          if (dataString.includes(keywordLower)) return true;
+        }
+        
+        return false;
+      });
+    }
+
     return NextResponse.json(
-      records.map((record) => ({
+      filteredRecords.map((record) => ({
         ...record,
         id: record._id.toString(),
       }))
@@ -102,6 +212,19 @@ export async function POST(request: NextRequest) {
       throw new AppError('Patient not found', 404);
     }
 
+    // Fetch OCR text from document if documentId is provided
+    let ocrText = data.ocrText || '';
+    if (data.documentId && !ocrText) {
+      try {
+        const document = await getDocumentById(data.documentId);
+        if (document && document.userId === session.user.id && document.ocrText) {
+          ocrText = document.ocrText;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch OCR text from document:', err);
+      }
+    }
+
     const newRecord = {
       patientId: data.patientId,
       recordType: data.recordType,
@@ -109,6 +232,7 @@ export async function POST(request: NextRequest) {
       tags: data.tags || [],
       source: data.source,
       documentPath: data.documentPath || '',
+      ocrText: ocrText,
       hospitalSystemName: data.hospitalSystemName || '',
       hospitalIdentifierType: data.hospitalIdentifierType || '',
       hospitalIdentifierValue: data.hospitalIdentifierValue || '',

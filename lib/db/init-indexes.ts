@@ -24,6 +24,26 @@ export async function initializeIndexes() {
   await healthRecordsCollection.createIndex({ tags: 1 });
   await healthRecordsCollection.createIndex({ hospitalSystemName: 1, hospitalIdentifierValue: 1 }, { sparse: true });
   await healthRecordsCollection.createIndex({ createdAt: -1 });
+  
+  // Full-text search index for searching across multiple fields
+  // MongoDB text index supports searching across multiple fields
+  await healthRecordsCollection.createIndex(
+    { 
+      source: 'text',
+      recordType: 'text',
+      tags: 'text',
+      ocrText: 'text'
+    },
+    { 
+      name: 'health_records_text_index',
+      weights: {
+        source: 10,
+        recordType: 5,
+        tags: 3,
+        ocrText: 1
+      }
+    }
+  );
 
   // Medications collection indexes
   const medicationsCollection = db.collection('medications');

@@ -9,6 +9,7 @@ export interface HealthRecord {
   tags: string[];
   source: string;
   documentPath?: string;
+  ocrText?: string;
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
   hospitalIdentifierValue?: string;
@@ -21,6 +22,7 @@ export interface CreateHealthRecordInput {
   tags?: string[];
   source: string;
   documentPath?: string;
+  ocrText?: string;
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
   hospitalIdentifierValue?: string;

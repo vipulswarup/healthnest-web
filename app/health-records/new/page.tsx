@@ -332,6 +332,7 @@ function NewHealthRecordContent() {
           ...formData,
           source: finalSource,
           data: formData.data || {},
+          documentId: uploadedDocument?.id,
         }),
       });
 
