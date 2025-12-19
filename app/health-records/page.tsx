@@ -13,6 +13,7 @@ interface HealthRecord {
   patientId: string;
   recordType: string;
   source: string;
+  doctorName?: string;
   createdAt: string;
   tags: string[];
   documentPath?: string;
@@ -575,6 +576,9 @@ export default function HealthRecordsPage() {
                           </div>
                           <p className="text-sm text-gray-600 mb-2">
                             Source: {record.source}
+                            {record.doctorName && (
+                              <span className="ml-2">• {record.doctorName}</span>
+                            )}
                           </p>
                           <p className="text-sm text-gray-500 mb-2">
                             {formatDate(record.createdAt)}

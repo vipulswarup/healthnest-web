@@ -30,6 +30,7 @@ export async function initializeIndexes() {
   await healthRecordsCollection.createIndex(
     { 
       source: 'text',
+      doctorName: 'text',
       recordType: 'text',
       tags: 'text',
       ocrText: 'text'
@@ -38,6 +39,7 @@ export async function initializeIndexes() {
       name: 'health_records_text_index',
       weights: {
         source: 10,
+        doctorName: 8,
         recordType: 5,
         tags: 3,
         ocrText: 1
@@ -72,6 +74,13 @@ export async function initializeIndexes() {
   await healthcareSourcesCollection.createIndex({ preferredName: 1 }, { unique: true });
   await healthcareSourcesCollection.createIndex({ aliases: 1 });
   await healthcareSourcesCollection.createIndex({ isActive: 1 });
+
+  // Doctors collection indexes
+  const doctorsCollection = db.collection('doctors');
+  await doctorsCollection.createIndex({ preferredName: 1 }, { unique: true });
+  await doctorsCollection.createIndex({ aliases: 1 });
+  await doctorsCollection.createIndex({ isActive: 1 });
+  await doctorsCollection.createIndex({ createdAt: -1 });
 
   console.log('MongoDB indexes initialized successfully');
 }

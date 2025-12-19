@@ -13,6 +13,7 @@ interface HealthRecord {
   patientId: string;
   recordType: string;
   source: string;
+  doctorName?: string;
   createdAt: string;
   updatedAt: string;
   tags: string[];
@@ -252,6 +253,13 @@ export default function HealthRecordDetailPage() {
                   <h3 className="text-sm font-medium text-gray-500 mb-2">Source</h3>
                   <p className="text-gray-900">{record.source}</p>
                 </div>
+
+                {record.doctorName && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">Doctor</h3>
+                    <p className="text-gray-900">{record.doctorName}</p>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-2">Record Type</h3>

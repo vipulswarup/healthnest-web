@@ -10,6 +10,7 @@ import { DocumentUploader } from '@/components/documents/DocumentUploader';
 import { OCRProgress } from '@/components/documents/OCRProgress';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 import { HealthcareSource } from '@/lib/types/healthcare-source.types';
+import { Doctor } from '@/lib/types/doctor.types';
 
 function NewHealthRecordContent() {
   const { data: session, status } = useSession();
@@ -26,6 +27,10 @@ function NewHealthRecordContent() {
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourceInput, setSourceInput] = useState('');
   const [showSourceDropdown, setShowSourceDropdown] = useState(false);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [doctorInput, setDoctorInput] = useState('');
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
   const [uploadedDocument, setUploadedDocument] = useState<{ id: string; fileUrl: string; fileName: string } | null>(null);
   
   // Processing states
@@ -36,6 +41,7 @@ function NewHealthRecordContent() {
   const [aiResults, setAiResults] = useState<{
     classification?: string;
     source?: string;
+    doctorName?: string;
     tags?: string[];
   } | null>(null);
 
@@ -43,6 +49,7 @@ function NewHealthRecordContent() {
     patientId: patientId,
     recordType: '',
     source: '',
+    doctorName: '',
     tags: [] as string[],
     data: {} as Record<string, any>,
     documentPath: '',
@@ -55,6 +62,13 @@ function NewHealthRecordContent() {
     }
   }, [formData.source]);
 
+  // Sync doctorInput with formData.doctorName when it changes externally
+  useEffect(() => {
+    if (formData.doctorName && formData.doctorName !== doctorInput) {
+      setDoctorInput(formData.doctorName);
+    }
+  }, [formData.doctorName]);
+
   useEffect(() => {
     if (status === 'loading') return;
 
@@ -66,6 +80,7 @@ function NewHealthRecordContent() {
     fetchPatients();
     fetchCategories();
     fetchSources();
+    fetchDoctors();
   }, [session, status, router]);
 
   const fetchPatients = async () => {
@@ -128,6 +143,23 @@ function NewHealthRecordContent() {
     }
   };
 
+  const fetchDoctors = async () => {
+    try {
+      setDoctorsLoading(true);
+      const response = await fetch('/api/doctors');
+      if (!response.ok) {
+        throw new Error('Failed to fetch doctors');
+      }
+      const data = await response.json();
+      console.log('Fetched doctors:', data.length);
+      setDoctors(data);
+    } catch (err) {
+      console.error('Failed to fetch doctors:', err);
+    } finally {
+      setDoctorsLoading(false);
+    }
+  };
+
   const handleSourceChange = (value: string) => {
     setSourceInput(value);
     if (!sourcesLoading && sources.length > 0) {
@@ -172,6 +204,50 @@ function NewHealthRecordContent() {
     : sources.filter(source =>
         source.preferredName.toLowerCase().includes(sourceInput.toLowerCase()) ||
         source.aliases.some(alias => alias.toLowerCase().includes(sourceInput.toLowerCase()))
+      );
+
+  const handleDoctorChange = (value: string) => {
+    setDoctorInput(value);
+    if (!doctorsLoading && doctors.length > 0) {
+      setShowDoctorDropdown(true);
+    }
+    setFormData(prev => ({ ...prev, doctorName: value }));
+  };
+
+  const handleDoctorSelect = (doctor: Doctor) => {
+    setDoctorInput(doctor.preferredName);
+    setShowDoctorDropdown(false);
+    setFormData(prev => ({ ...prev, doctorName: doctor.preferredName }));
+  };
+
+  const handleDoctorBlur = async () => {
+    setTimeout(() => {
+      setShowDoctorDropdown(false);
+      
+      if (doctorInput.trim() && !doctors.some(d => d.preferredName.toLowerCase() === doctorInput.toLowerCase())) {
+        fetch('/api/doctors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: doctorInput.trim() }),
+        })
+          .then(res => res.json())
+          .then(newDoctor => {
+            if (newDoctor.preferredName) {
+              setDoctors(prev => [...prev, newDoctor].sort((a, b) => 
+                a.preferredName.localeCompare(b.preferredName)
+              ));
+            }
+          })
+          .catch(err => console.error('Failed to save new doctor:', err));
+      }
+    }, 200);
+  };
+
+  const filteredDoctors = doctorInput.trim() === ''
+    ? doctors
+    : doctors.filter(doctor =>
+        doctor.preferredName.toLowerCase().includes(doctorInput.toLowerCase()) ||
+        doctor.aliases.some(alias => alias.toLowerCase().includes(doctorInput.toLowerCase()))
       );
 
   const handleTagToggle = (tag: string) => {
@@ -267,10 +343,35 @@ function NewHealthRecordContent() {
           }
         }
         
+        // Match doctor name if provided
+        let matchedDoctorName = analyzeData.doctorName || '';
+        if (analyzeData.doctorName) {
+          try {
+            const matchRes = await fetch('/api/doctors/match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: analyzeData.doctorName }),
+            });
+            if (matchRes.ok) {
+              const matchData = await matchRes.json();
+              matchedDoctorName = matchData.matched;
+              setDoctorInput(matchedDoctorName);
+            } else {
+              matchedDoctorName = analyzeData.doctorName;
+              setDoctorInput(matchedDoctorName);
+            }
+          } catch (err) {
+            console.error('Failed to match doctor:', err);
+            matchedDoctorName = analyzeData.doctorName;
+            setDoctorInput(matchedDoctorName);
+          }
+        }
+        
         setFormData(prev => ({
           ...prev,
           recordType: matchedCategory?.code || prev.recordType,
           source: matchedSource,
+          doctorName: matchedDoctorName,
           // Use all AI-suggested tags
           tags: normalizedTags.length > 0 ? normalizedTags : prev.tags,
         }));
@@ -545,6 +646,62 @@ function NewHealthRecordContent() {
               : sources.length === 0 
                 ? 'No sources available. Start typing to create a new source.' 
                 : 'Start typing to search existing sources or enter a new one'}
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="doctorName" className="block text-sm font-medium text-gray-700 mb-2">
+            Doctor Name
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              id="doctorName"
+              value={doctorInput || formData.doctorName}
+              onChange={(e) => handleDoctorChange(e.target.value)}
+              onFocus={() => {
+                if (!doctorsLoading && doctors.length > 0) {
+                  setShowDoctorDropdown(true);
+                }
+              }}
+              onBlur={handleDoctorBlur}
+              placeholder="Type to search or enter new doctor name..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+            />
+            {showDoctorDropdown && !doctorsLoading && filteredDoctors.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                {filteredDoctors.map((doctor) => (
+                  <button
+                    key={doctor.id || doctor._id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleDoctorSelect(doctor);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none transition-colors"
+                  >
+                    <div className="font-medium text-gray-900">{doctor.preferredName}</div>
+                    {doctor.aliases && doctor.aliases.length > 0 && (
+                      <div className="text-xs text-gray-500">
+                        Also known as: {doctor.aliases.slice(0, 2).join(', ')}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            {showDoctorDropdown && !doctorsLoading && filteredDoctors.length === 0 && doctorInput.trim() !== '' && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-sm text-gray-500">
+                No matching doctors found. Press Enter to create a new doctor.
+              </div>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {doctorsLoading 
+              ? 'Loading doctors...' 
+              : doctors.length === 0 
+                ? 'No doctors available. Start typing to create a new doctor.' 
+                : 'Start typing to search existing doctors or enter a new one'}
           </p>
         </div>
 

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import { getDocumentById, updateDocumentStatus } from '@/lib/services/document.service';
 import { analyzeDocument } from '@/lib/services/ai.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
+import { findDoctorByName } from '@/lib/services/doctor.service';
 
 function limitToFirstNWords(text: string, maxWords: number): string {
     if (!text || text.trim().length === 0) {
@@ -51,21 +52,36 @@ export async function POST(request: NextRequest) {
             const limitedText = limitToFirstNWords(document.ocrText, 1000);
             const result = await analyzeDocument(limitedText);
 
+            // Normalize doctor name if provided
+            let normalizedDoctorName = result.doctorName || null;
+            if (normalizedDoctorName) {
+                try {
+                    const matchedDoctor = await findDoctorByName(normalizedDoctorName);
+                    if (matchedDoctor) {
+                        normalizedDoctorName = matchedDoctor.preferredName;
+                    }
+                } catch (err) {
+                    console.warn('Failed to normalize doctor name:', err);
+                }
+            }
+
             await updateDocumentStatus(documentId, {
                 aiStatus: 'COMPLETED',
                 classification: result.classification,
                 confidenceScore: result.confidence,
                 suggestedTags: result.tags,
                 approvedTags: result.tags.length > 0 ? result.tags : undefined,
-                // We might want to save source in extractedData or a new field, 
-                // but for now the frontend just needs it to populate the form.
-                // Let's store it in extractionData for persistence or just return it.
-                // Document type definition needs update to store 'source' if we want to persist it on the doc model.
-                // For now, let's put it in extractedData.
-                extractedData: { ...(document.extractedData || {}), source: result.source }
+                extractedData: { 
+                    ...(document.extractedData || {}), 
+                    source: result.source,
+                    doctorName: normalizedDoctorName
+                }
             });
 
-            return NextResponse.json(result);
+            return NextResponse.json({
+                ...result,
+                doctorName: normalizedDoctorName
+            });
         } catch (error) {
             await updateDocumentStatus(documentId, { aiStatus: 'FAILED' });
             throw error;

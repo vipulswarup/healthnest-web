@@ -5,6 +5,8 @@ import { getDatabase } from '@/lib/mongodb';
 import { z } from 'zod';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 import { ObjectId } from 'mongodb';
+import { getDocumentById } from '@/lib/services/document.service';
+import { findDoctorByName, createDoctor } from '@/lib/services/doctor.service';
 
 const createHealthRecordSchema = z.object({
   patientId: z.string().min(1, 'Patient ID is required'),
@@ -12,6 +14,7 @@ const createHealthRecordSchema = z.object({
   data: z.record(z.string(), z.any()),
   tags: z.array(z.string()).optional(),
   source: z.string().min(1, 'Source is required'),
+  doctorName: z.string().optional(),
   documentPath: z.string().optional(),
   ocrText: z.string().optional(),
   documentId: z.string().optional(),
@@ -123,6 +126,7 @@ export async function GET(request: NextRequest) {
         const keywordRegex = { $regex: keyword, $options: 'i' };
         query.$or = [
           { source: keywordRegex },
+          { doctorName: keywordRegex },
           { tags: { $in: [new RegExp(keyword, 'i')] } },
           { recordType: keywordRegex },
           { ocrText: keywordRegex },
@@ -225,12 +229,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Normalize and save doctor name
+    let finalDoctorName = data.doctorName || '';
+    if (finalDoctorName.trim()) {
+      try {
+        const matchedDoctor = await findDoctorByName(finalDoctorName);
+        if (matchedDoctor) {
+          finalDoctorName = matchedDoctor.preferredName;
+        } else {
+          // Create new doctor entry
+          const newDoctor = await createDoctor(finalDoctorName);
+          finalDoctorName = newDoctor.preferredName;
+        }
+      } catch (err) {
+        console.warn('Failed to normalize doctor name:', err);
+        // Continue with original name if normalization fails
+      }
+    }
+
     const newRecord = {
       patientId: data.patientId,
       recordType: data.recordType,
       data: data.data,
       tags: data.tags || [],
       source: data.source,
+      doctorName: finalDoctorName,
       documentPath: data.documentPath || '',
       ocrText: ocrText,
       hospitalSystemName: data.hospitalSystemName || '',

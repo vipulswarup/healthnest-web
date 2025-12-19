@@ -12,6 +12,7 @@ export interface AnalysisResult {
     classification: string;
     confidence: number;
     source: string | null;
+    doctorName: string | null;
     tags: string[];
 }
 
@@ -76,6 +77,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
         
         return {
             ...result,
+            doctorName: result.doctorName || null,
             tags: normalizedTags
         };
     } catch (e) {
@@ -84,6 +86,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
             classification: "Unknown",
             confidence: 0,
             source: null,
+            doctorName: null,
             tags: []
         };
     }

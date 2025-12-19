@@ -11,6 +11,7 @@ const updateHealthRecordSchema = z.object({
   data: z.record(z.string(), z.any()).optional(),
   tags: z.array(z.string()).optional(),
   source: z.string().optional(),
+  doctorName: z.string().optional(),
   documentPath: z.string().optional(),
   hospitalSystemName: z.string().optional(),
   hospitalIdentifierType: z.string().optional(),
