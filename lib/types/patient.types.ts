@@ -27,7 +27,7 @@ export interface Patient {
   abhaNumber?: string;
   bloodGroup?: string;
   emergencyContacts: EmergencyContact[];
-  preferences: Record<string, any>;
+  preferences: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
   hospitalIdentifiers: HospitalIdentifier[];
@@ -47,7 +47,7 @@ export interface CreatePatientInput {
   abhaNumber?: string;
   bloodGroup?: string;
   emergencyContacts?: EmergencyContact[];
-  preferences?: Record<string, any>;
+  preferences?: Record<string, unknown>;
   hospitalIdentifiers?: HospitalIdentifier[];
   mobileNumbers?: MobileNumber[];
 }
@@ -64,8 +64,7 @@ export interface UpdatePatientInput {
   abhaNumber?: string;
   bloodGroup?: string;
   emergencyContacts?: EmergencyContact[];
-  preferences?: Record<string, any>;
+  preferences?: Record<string, unknown>;
   hospitalIdentifiers?: HospitalIdentifier[];
   mobileNumbers?: MobileNumber[];
 }
-

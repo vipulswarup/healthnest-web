@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface AISuggestionsProps {
-    documentId: string;
     initialClassification?: string;
     initialTags?: string[];
     autoSelectedTags?: string[];
@@ -13,7 +12,6 @@ interface AISuggestionsProps {
 }
 
 export function AISuggestions({
-    documentId,
     initialClassification,
     initialTags = [],
     autoSelectedTags = [],
@@ -34,19 +32,6 @@ export function AISuggestions({
         return allTags;
     });
     const [newTag, setNewTag] = useState('');
-
-    // Update local state when props change
-    useEffect(() => {
-        if (initialClassification) setClassification(initialClassification);
-        // Merge auto-selected and suggested tags
-        const allTags = [...autoSelectedTags];
-        initialTags.forEach(tag => {
-            if (!allTags.includes(tag)) {
-                allTags.push(tag);
-            }
-        });
-        setTags(allTags);
-    }, [initialClassification, initialTags, autoSelectedTags]);
 
     const handleAddTag = (e: React.FormEvent) => {
         e.preventDefault();
@@ -93,7 +78,7 @@ export function AISuggestions({
                 </select>
                 {initialClassification && initialClassification !== "Unknown" && (
                     <p className="text-xs text-green-600 mt-1">
-                        Build with confidence: AI suggested "{initialClassification}"
+                        Build with confidence: AI suggested &ldquo;{initialClassification}&rdquo;
                     </p>
                 )}
             </div>

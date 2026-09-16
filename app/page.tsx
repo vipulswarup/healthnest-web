@@ -1,53 +1,23 @@
-'use client';
+import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { getAuthenticatedUser } from '@/lib/auth/session';
+import { LandingPage } from '@/components/marketing/LandingPage';
+import { SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site';
 
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+export const metadata: Metadata = {
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+  robots: { index: true, follow: true },
+};
 
-export default function Home() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (status === 'loading') {
-      return;
-    }
-
-    try {
-      if (!session) {
-        router.push('/auth/signin');
-      } else {
-        router.push('/dashboard');
-      }
-    } catch (err) {
-      console.error('Navigation error:', err);
-      setError('An error occurred. Please try again.');
-    }
-  }, [session, status, router]);
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <a
-            href="/auth/signin"
-            className="text-[#0175C2] hover:text-[#015a96] underline"
-          >
-            Go to Sign In
-          </a>
-        </div>
-      </div>
-    );
+export default async function Home() {
+  try {
+    const user = await getAuthenticatedUser();
+    if (user) redirect('/dashboard');
+  } catch {
+    // Session lookup must never blank the public page for crawlers or visitors.
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-        <p className="mt-4 text-gray-600">Loading...</p>
-      </div>
-    </div>
-  );
+  return <LandingPage />;
 }

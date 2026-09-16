@@ -1,35 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
+import { getCurrentUser } from '@/lib/auth/session';
+import { sql } from '@/lib/db/neon';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { findSourceByName, createSource } from '@/lib/services/source.service';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
+    if (!await getCurrentUser()) throw new AppError('Unauthorized', 401);
 
     const { name } = await request.json();
-    if (!name || !name.trim()) {
+    if (!name || !String(name).trim()) {
       throw new AppError('Source name is required', 400);
     }
 
-    // Try to find matching source
-    let source = await findSourceByName(name);
-    
-    // If not found, create a new one
-    if (!source) {
-      source = await createSource(name);
+    const trimmed = String(name).trim();
+    const [existing] = await sql`
+      SELECT id, preferred_name AS "preferredName", aliases, is_active AS "isActive"
+      FROM healthcare_sources
+      WHERE is_active = TRUE
+        AND (
+          preferred_name ILIKE ${trimmed}
+          OR ${trimmed} ILIKE ANY(aliases)
+          OR preferred_name ILIKE ${'%' + trimmed + '%'}
+          OR ${trimmed} ILIKE '%' || preferred_name || '%'
+        )
+      ORDER BY
+        CASE WHEN preferred_name ILIKE ${trimmed} THEN 0 ELSE 1 END,
+        preferred_name
+      LIMIT 1
+    `;
+
+    if (existing) {
+      return NextResponse.json({ matched: existing.preferredName, source: existing });
     }
 
-    return NextResponse.json({ 
-      matched: source.preferredName,
-      source 
-    });
+    // The catalog is shared across every account. An unmatched value remains
+    // private to the health record being created; only curated data is global.
+    return NextResponse.json({ matched: trimmed, source: null });
   } catch (error) {
     return handleError(error);
   }
 }
-

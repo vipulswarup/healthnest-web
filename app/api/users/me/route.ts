@@ -1,52 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getDatabase } from '@/lib/mongodb';
 import { z } from 'zod';
-import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { ObjectId } from 'mongodb';
+import { getCurrentUser } from '@/lib/auth/session';
+import { sql } from '@/lib/db/neon';
+import { AppError, handleError } from '@/lib/middleware/error-handler';
 
-const updateUserSchema = z.object({
+const updateProfileSchema = z.object({
   firstName: z.string().min(1).optional(),
-  middleName: z.string().optional(),
-  lastName: z.string().optional(),
-  title: z.string().optional(),
-  suffix: z.string().optional(),
-  emails: z.array(z.string().email()).optional(),
-  mobileNumbers: z.array(z.object({
-    countryCode: z.string(),
-    number: z.string(),
-  })).optional(),
-  preferences: z.record(z.string(), z.any()).optional(),
+  lastName: z.string().nullable().optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
   onboardingCompleted: z.boolean().optional(),
 });
 
-export async function GET(request: NextRequest) {
+function toProfile(row: Record<string, unknown>) {
+  return {
+    id: String(row.user_id),
+    email: row.email || null,
+    firstName: row.first_name,
+    lastName: row.last_name || null,
+    preferences: row.preferences || {},
+    onboardingCompleted: Boolean(row.onboarding_completed),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function currentProfile() {
+  const user = await getCurrentUser();
+  if (!user) throw new AppError('Unauthorized', 401);
+  const [profile] = await sql`SELECT * FROM profiles WHERE user_id = ${user.id}`;
+  if (!profile) throw new AppError('User not found', 404);
+  return { user, profile };
+}
+
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const db = await getDatabase();
-    const usersCollection = db.collection('users');
-
-    const user = await usersCollection.findOne({
-      _id: new ObjectId(session.user.id),
-    });
-
-    if (!user) {
-      throw new AppError('User not found', 404);
-    }
-
-    // Remove sensitive data
-    const { password, ...userWithoutPassword } = user;
-
-    return NextResponse.json({
-      ...userWithoutPassword,
-      id: user._id.toString(),
-    });
+    const { profile } = await currentProfile();
+    return NextResponse.json(toProfile(profile));
   } catch (error) {
     return handleError(error);
   }
@@ -54,50 +43,23 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const { user } = await currentProfile();
+    const parsed = updateProfileSchema.safeParse(await request.json());
+    if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400, 'VALIDATION_ERROR');
+    const data = parsed.data;
 
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const body = await request.json();
-    const validationResult = updateUserSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      throw new AppError(
-        validationResult.error.issues[0].message,
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-
-    const db = await getDatabase();
-    const usersCollection = db.collection('users');
-
-    const updateData = {
-      ...validationResult.data,
-      updatedAt: new Date(),
-    };
-
-    const result = await usersCollection.findOneAndUpdate(
-      { _id: new ObjectId(session.user.id) },
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
-
-    if (!result) {
-      throw new AppError('User not found', 404);
-    }
-
-    // Remove sensitive data
-    const { password, ...userWithoutPassword } = result;
-
-    return NextResponse.json({
-      ...userWithoutPassword,
-      id: result._id.toString(),
-    });
+    const [profile] = await sql`
+      UPDATE profiles SET
+        first_name = COALESCE(${data.firstName ?? null}, first_name),
+        last_name = COALESCE(${data.lastName ?? null}, last_name),
+        preferences = COALESCE(${data.preferences === undefined ? null : JSON.stringify(data.preferences)}::jsonb, preferences),
+        onboarding_completed = COALESCE(${data.onboardingCompleted ?? null}, onboarding_completed),
+        updated_at = NOW()
+      WHERE user_id = ${user.id}
+      RETURNING *
+    `;
+    return NextResponse.json(toProfile(profile));
   } catch (error) {
     return handleError(error);
   }
 }
-

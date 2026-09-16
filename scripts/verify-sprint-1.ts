@@ -10,8 +10,8 @@ async function main() {
     try {
         const text = await extractTextFromImage('https://dummyimage.com/600x400/000/fff&text=Lab+Report');
         console.log('OCR Output:', text.substring(0, 100) + '...');
-    } catch (e: any) {
-        console.error('OCR Failed:', e.message);
+    } catch (e) {
+        console.error('OCR Failed:', e instanceof Error ? e.message : e);
     }
 
     // Test AI Classification
@@ -20,8 +20,8 @@ async function main() {
     try {
         const classification = await classifyDocument(sampleText);
         console.log('Classification:', classification);
-    } catch (e: any) {
-        console.error('Classification Failed:', e.message);
+    } catch (e) {
+        console.error('Classification Failed:', e instanceof Error ? e.message : e);
     }
 
     // Test AI Tagging
@@ -29,8 +29,8 @@ async function main() {
     try {
         const tags = await suggestTags(sampleText);
         console.log('Tags:', tags);
-    } catch (e: any) {
-        console.error('Tagging Failed:', e.message);
+    } catch (e) {
+        console.error('Tagging Failed:', e instanceof Error ? e.message : e);
     }
 }
 

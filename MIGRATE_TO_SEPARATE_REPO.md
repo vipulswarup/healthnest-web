@@ -1,15 +1,15 @@
-# Migrating healthnest-web to Separate GitHub Repository
+# Migrating sanovault-web to Separate GitHub Repository
 
-This guide will help you move `healthnest-web` into its own GitHub repository, separate from the Flutter project.
+This guide will help you move `sanovault-web` into its own GitHub repository, separate from the Flutter project.
 
 ## Step 1: Create New GitHub Repository
 
 1. Go to [GitHub](https://github.com/new)
-2. Create a new repository named `healthnest-web` (or `healthnest-web-app`)
+2. Create a new repository named `sanovault-web` (or `sanovault-web-app`)
 3. **DO NOT** initialize with README, .gitignore, or license (we'll bring our own)
-4. Copy the repository URL (e.g., `git@github.com:vipulswarup/healthnest-web.git`)
+4. Copy the repository URL (e.g., `git@github.com:vipulswarup/sanovault-web.git`)
 
-## Step 2: Extract healthnest-web from Parent Repository
+## Step 2: Extract sanovault-web from Parent Repository
 
 ### Option A: Use the Migration Script (Recommended)
 
@@ -17,8 +17,8 @@ This guide will help you move `healthnest-web` into its own GitHub repository, s
 2. Run the migration script:
 
 ```bash
-cd /Users/vipulswarup/coding/health-apps/HealthNest/healthnest-web
-./migrate.sh git@github.com:vipulswarup/healthnest-web.git
+cd /Users/vipulswarup/coding/health-apps/SanoVault/sanovault-web
+./migrate.sh git@github.com:vipulswarup/sanovault-web.git
 # Replace with your actual repository URL
 ```
 
@@ -33,8 +33,8 @@ The script will:
 Run these commands in your terminal:
 
 ```bash
-# Navigate to the healthnest-web directory
-cd /Users/vipulswarup/coding/health-apps/HealthNest/healthnest-web
+# Navigate to the sanovault-web directory
+cd /Users/vipulswarup/coding/health-apps/SanoVault/sanovault-web
 
 # Remove the current git connection to parent repo
 rm -rf .git
@@ -46,10 +46,10 @@ git init
 git add .
 
 # Create initial commit
-git commit -m "Initial commit: Extract healthnest-web from HealthNest monorepo"
+git commit -m "Initial commit: Extract sanovault-web from SanoVault monorepo"
 
 # Add the new remote repository
-git remote add origin git@github.com:vipulswarup/healthnest-web.git
+git remote add origin git@github.com:vipulswarup/sanovault-web.git
 # Replace with your actual repository URL
 
 # Push to the new repository
@@ -60,17 +60,17 @@ git push -u origin main
 ## Step 3: Update Vercel Project
 
 1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
-2. Find your current HealthNest project
+2. Find your current SanoVault project
 3. Go to **Project Settings** → **General**
 4. Click **"Change"** next to the repository
-5. Select the new `healthnest-web` repository
+5. Select the new `sanovault-web` repository
 6. Update **Root Directory** to be empty (since the repo is now the web project root)
 7. Verify **Framework Preset** shows "Next.js"
 8. Click **Save**
 
 Alternatively, create a new Vercel project:
 1. Go to Vercel Dashboard → **Add New Project**
-2. Import the new `healthnest-web` repository
+2. Import the new `sanovault-web` repository
 3. Configure environment variables (copy from old project)
 4. Deploy!
 
@@ -90,19 +90,19 @@ After connecting the new repository:
    - `GOOGLE_CLIENT_ID` (if using)
    - `GOOGLE_CLIENT_SECRET` (if using)
 
-## Step 5: Remove healthnest-web from Parent Repository (Optional)
+## Step 5: Remove sanovault-web from Parent Repository (Optional)
 
-If you want to remove `healthnest-web` from the parent HealthNest repository:
+If you want to remove `sanovault-web` from the parent SanoVault repository:
 
 ```bash
 # Navigate to parent repository
-cd /Users/vipulswarup/coding/health-apps/HealthNest
+cd /Users/vipulswarup/coding/health-apps/SanoVault
 
-# Remove healthnest-web directory from git tracking
-git rm -r --cached healthnest-web
+# Remove sanovault-web directory from git tracking
+git rm -r --cached sanovault-web
 
 # Commit the removal
-git commit -m "Remove healthnest-web - moved to separate repository"
+git commit -m "Remove sanovault-web - moved to separate repository"
 
 # Push to parent repository
 git push origin main
@@ -110,7 +110,7 @@ git push origin main
 
 **Note:** This removes it from git tracking but keeps the local folder. If you want to delete it completely:
 ```bash
-rm -rf healthnest-web
+rm -rf sanovault-web
 ```
 
 ## Step 6: Verify Deployment
@@ -123,7 +123,7 @@ rm -rf healthnest-web
 ## Troubleshooting
 
 ### If Vercel still shows errors:
-- Check that Root Directory is empty (not `healthnest-web`)
+- Check that Root Directory is empty (not `sanovault-web`)
 - Verify all environment variables are set
 - Check build logs for any errors
 

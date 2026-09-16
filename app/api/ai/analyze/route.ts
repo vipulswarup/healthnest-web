@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
+import { getCurrentUser } from '@/lib/auth/session';
 import { getDocumentById, updateDocumentStatus } from '@/lib/services/document.service';
 import { analyzeDocument } from '@/lib/services/ai.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { findDoctorByName } from '@/lib/services/doctor.service';
+import { sql } from '@/lib/db/neon';
+import { formatDoctorDisplay, matchDoctorName } from '@/lib/doctors/normalize';
+import { enforceHourlyRateLimit } from '@/lib/security/rate-limit';
 
 function limitToFirstNWords(text: string, maxWords: number): string {
     if (!text || text.trim().length === 0) {
@@ -21,10 +22,11 @@ function limitToFirstNWords(text: string, maxWords: number): string {
 
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.id) {
+        const user = await getCurrentUser();
+        if (!user) {
             throw new AppError('Unauthorized', 401);
         }
+        await enforceHourlyRateLimit(user.id, 'ai');
 
         const { documentId } = await request.json();
 
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
             throw new AppError('Document not found', 404);
         }
 
-        if (document.userId !== session.user.id) {
+        if (document.userId !== user.id) {
             throw new AppError('Forbidden', 403);
         }
 
@@ -51,33 +53,30 @@ export async function POST(request: NextRequest) {
             // Limit to first 1000 words to save AI costs
             const limitedText = limitToFirstNWords(document.ocrText, 1000);
             
-            // DEBUG LOGGING - Input to AI
-            console.log('\n--- AI ANALYSIS INPUT ---');
-            console.log('Document ID:', documentId);
-            console.log('OCR Text Length:', document.ocrText.length);
-            console.log('Limited Text Length:', limitedText.length);
-            console.log('First 200 chars of OCR:', document.ocrText.substring(0, 200));
-            console.log('-----------------------\n');
-            
             const result = await analyzeDocument(limitedText);
 
-            // DEBUG LOGGING - After AI Analysis
-            console.log('\n--- AI ANALYSIS OUTPUT ---');
-            console.log('Result:', JSON.stringify(result, null, 2));
-            console.log('Document Date from AI:', result.documentDate);
-            console.log('Document Date type:', typeof result.documentDate);
-            console.log('-----------------------\n');
-
             // Normalize doctor name if provided
-            let normalizedDoctorName = result.doctorName || null;
-            if (normalizedDoctorName) {
+            let normalizedDoctorName =
+              result.doctorName && result.classification?.toLowerCase() !== 'id document'
+                ? formatDoctorDisplay(result.doctorName)
+                : null;
+            if (result.doctorName) {
                 try {
-                    const matchedDoctor = await findDoctorByName(normalizedDoctorName);
-                    if (matchedDoctor) {
-                        normalizedDoctorName = matchedDoctor.preferredName;
-                    }
-                } catch (err) {
-                    console.warn('Failed to normalize doctor name:', err);
+                    const catalog = await sql`
+                      SELECT preferred_name AS "preferredName", aliases
+                      FROM doctors
+                      WHERE is_active = TRUE
+                    `;
+                    const matched = matchDoctorName(
+                      result.doctorName,
+                      catalog.map((row) => ({
+                        preferredName: String(row.preferredName),
+                        aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
+                      })),
+                    );
+                    if (matched) normalizedDoctorName = matched;
+                } catch {
+                    // A failed catalog match still returns the formatted extracted name.
                 }
             }
 
@@ -91,7 +90,9 @@ export async function POST(request: NextRequest) {
                     ...(document.extractedData || {}), 
                     source: result.source,
                     doctorName: normalizedDoctorName,
-                    documentDate: result.documentDate
+                    documentDate: result.documentDate,
+                    idType: result.idType || null,
+                    expiryDate: result.expiryDate || null,
                 }
             });
 

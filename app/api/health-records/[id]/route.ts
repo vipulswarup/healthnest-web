@@ -1,207 +1,152 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getDatabase } from '@/lib/mongodb';
 import { z } from 'zod';
-import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { ObjectId } from 'mongodb';
+import { getCurrentUser } from '@/lib/auth/session';
+import { sql } from '@/lib/db/neon';
+import { toHealthRecord } from '@/lib/db/records';
+import { AppError, handleError } from '@/lib/middleware/error-handler';
+import { recordAuditEvent } from '@/lib/services/audit.service';
 
-const updateHealthRecordSchema = z.object({
-  recordType: z.string().optional(),
+const updateSchema = z.object({
+  recordType: z.string().min(1).optional(),
   data: z.record(z.string(), z.any()).optional(),
   tags: z.array(z.string()).optional(),
-  source: z.string().optional(),
+  source: z.string().min(1).optional(),
   doctorName: z.string().optional(),
   documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
-  documentPath: z.string().optional(),
+  ocrText: z.string().optional(),
   hospitalSystemName: z.string().optional(),
   hospitalIdentifierType: z.string().optional(),
   hospitalIdentifierValue: z.string().optional(),
+  patientId: z.string().uuid().optional(),
+  approveReview: z.boolean().optional(),
 });
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid health record ID', 400);
-    }
-
-    const db = await getDatabase();
-    const healthRecordsCollection = db.collection('health_records');
-    const patientsCollection = db.collection('patients');
-
-    const record = await healthRecordsCollection.findOne({
-      _id: new ObjectId(id),
-    });
-
-    if (!record) {
-      throw new AppError('Health record not found', 404);
-    }
-
-    // Verify patient belongs to user
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(record.patientId),
-      userId: session.user.id,
-    });
-
-    if (!patient) {
-      throw new AppError('Unauthorized access to this record', 403);
-    }
-
-    return NextResponse.json({
-      ...record,
-      id: record._id.toString(),
-    });
-  } catch (error) {
-    return handleError(error);
-  }
+async function context(params: Promise<{ id: string }>) {
+  const user = await getCurrentUser();
+  if (!user) throw new AppError('Unauthorized', 401);
+  const id = (await params).id;
+  if (!z.string().uuid().safeParse(id).success) throw new AppError('Invalid health record ID', 400);
+  return { user, id };
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const { user, id } = await context(params);
+    const [record] = await sql`
+      SELECT hr.* FROM health_records hr
+      JOIN patients p ON p.id = hr.patient_id
+      WHERE hr.id = ${id}::uuid
+        AND EXISTS (
+          SELECT 1
+          FROM household_patients hp
+          INNER JOIN household_members hm
+            ON hm.household_id = hp.household_id AND hm.user_id = ${user.id}
+          WHERE hp.patient_id = p.id
+        )
+    `;
+    if (!record) throw new AppError('Health record not found', 404);
+    return NextResponse.json(toHealthRecord(record));
+  } catch (error) { return handleError(error); }
+}
 
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { user, id } = await context(params);
+    const parsed = updateSchema.safeParse(await request.json());
+    if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400, 'VALIDATION_ERROR');
+    const data = parsed.data;
 
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid health record ID', 400);
-    }
-
-    const body = await request.json();
-    const validationResult = updateHealthRecordSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      throw new AppError(
-        validationResult.error.issues[0].message,
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-
-    const db = await getDatabase();
-    const healthRecordsCollection = db.collection('health_records');
-    const patientsCollection = db.collection('patients');
-
-    // Verify record exists and patient belongs to user
-    const existingRecord = await healthRecordsCollection.findOne({
-      _id: new ObjectId(id),
-    });
-
-    if (!existingRecord) {
-      throw new AppError('Health record not found', 404);
-    }
-
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(existingRecord.patientId),
-      userId: session.user.id,
-    });
-
-    if (!patient) {
-      throw new AppError('Unauthorized access to this record', 403);
-    }
-
-    // Parse document date if provided
-    const updateFields: any = { ...validationResult.data };
-    if (updateFields.documentDate) {
-      try {
-        const parsedDate = new Date(updateFields.documentDate);
-        if (!isNaN(parsedDate.getTime())) {
-          updateFields.documentDate = parsedDate;
-        } else {
-          delete updateFields.documentDate;
-        }
-      } catch (err) {
-        delete updateFields.documentDate;
+    if (data.patientId) {
+      const { canAccessPatient } = await import('@/lib/households/access');
+      if (!(await canAccessPatient(user.id, data.patientId))) {
+        throw new AppError('Patient not found', 404);
       }
     }
 
-    const updateData = {
-      ...updateFields,
-      updatedAt: new Date(),
-    };
-
-    const result = await healthRecordsCollection.findOneAndUpdate(
-      { _id: new ObjectId(id) },
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
-
-    if (!result) {
-      throw new AppError('Health record not found', 404);
+    let nextTags = data.tags;
+    if (data.approveReview) {
+      const baseTags = nextTags ?? (await sql`
+        SELECT tags FROM health_records WHERE id = ${id}::uuid LIMIT 1
+      `)[0]?.tags as string[] | undefined ?? [];
+      nextTags = (baseTags || []).filter((tag) => tag !== 'needs_review');
     }
 
-    return NextResponse.json({
-      ...result,
-      id: result._id.toString(),
+    const [record] = await sql`
+      UPDATE health_records hr SET
+        patient_id = COALESCE(${data.patientId ?? null}::uuid, hr.patient_id),
+        record_type = COALESCE(${data.recordType ?? null}, hr.record_type),
+        data = COALESCE(${data.data === undefined ? null : JSON.stringify(data.data)}::jsonb, hr.data),
+        tags = COALESCE(${nextTags ?? null}, hr.tags),
+        source = COALESCE(${data.source ?? null}, hr.source),
+        doctor_name = COALESCE(${data.doctorName ?? null}, hr.doctor_name),
+        document_date = COALESCE(${data.documentDate ?? null}::date, hr.document_date),
+        ocr_text = COALESCE(${data.ocrText ?? null}, hr.ocr_text),
+        hospital_system_name = COALESCE(${data.hospitalSystemName ?? null}, hr.hospital_system_name),
+        hospital_identifier_type = COALESCE(${data.hospitalIdentifierType ?? null}, hr.hospital_identifier_type),
+        hospital_identifier_value = COALESCE(${data.hospitalIdentifierValue ?? null}, hr.hospital_identifier_value),
+        updated_at = NOW()
+      FROM patients p
+      WHERE hr.patient_id = p.id AND hr.id = ${id}::uuid
+        AND EXISTS (
+          SELECT 1
+          FROM household_patients hp
+          INNER JOIN household_members hm
+            ON hm.household_id = hp.household_id AND hm.user_id = ${user.id}
+          WHERE hp.patient_id = p.id
+        )
+      RETURNING hr.*
+    `;
+    if (!record) throw new AppError('Health record not found', 404);
+
+    if (data.approveReview && record.document_id) {
+      await sql`
+        UPDATE documents SET
+          is_approved = TRUE,
+          approved_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${String(record.document_id)}::uuid
+      `;
+    }
+
+    await recordAuditEvent({
+      actorId: user.id,
+      patientId: record.patient_id,
+      eventType: 'updated',
+      entityType: 'health_record',
+      entityId: id,
+      metadata: {
+        changedFields: Object.keys(data),
+        ...(data.approveReview ? { approvedReview: true } : {}),
+      },
     });
-  } catch (error) {
-    return handleError(error);
-  }
+    return NextResponse.json(toHealthRecord(record));
+  } catch (error) { return handleError(error); }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid health record ID', 400);
-    }
-
-    const db = await getDatabase();
-    const healthRecordsCollection = db.collection('health_records');
-    const patientsCollection = db.collection('patients');
-
-    // Verify record exists and patient belongs to user
-    const existingRecord = await healthRecordsCollection.findOne({
-      _id: new ObjectId(id),
+    const { user, id } = await context(params);
+    const [record] = await sql`
+      DELETE FROM health_records hr
+      USING patients p
+      WHERE hr.patient_id = p.id AND hr.id = ${id}::uuid
+        AND EXISTS (
+          SELECT 1
+          FROM household_patients hp
+          INNER JOIN household_members hm
+            ON hm.household_id = hp.household_id AND hm.user_id = ${user.id}
+          WHERE hp.patient_id = p.id
+        )
+      RETURNING hr.id, hr.patient_id
+    `;
+    if (!record) throw new AppError('Health record not found', 404);
+    await recordAuditEvent({
+      actorId: user.id,
+      patientId: record.patient_id,
+      eventType: 'deleted',
+      entityType: 'health_record',
+      entityId: id,
     });
-
-    if (!existingRecord) {
-      throw new AppError('Health record not found', 404);
-    }
-
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(existingRecord.patientId),
-      userId: session.user.id,
-    });
-
-    if (!patient) {
-      throw new AppError('Unauthorized access to this record', 403);
-    }
-
-    await healthRecordsCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
-
     return NextResponse.json({ message: 'Health record deleted successfully' });
-  } catch (error) {
-    return handleError(error);
-  }
+  } catch (error) { return handleError(error); }
 }
-

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers free, serverless deployment options with CI/CD for HealthNest Web.
+This guide covers free, serverless deployment options with CI/CD for SanoVault Web.
 
 ## Recommended Options
 
@@ -30,17 +30,31 @@ This guide covers free, serverless deployment options with CI/CD for HealthNest 
 6. Deploy!
 
 **Environment Variables to Set:**
-- `MONGODB_URI`
-- `MONGODB_DB_NAME`
-- `NEXTAUTH_URL` (auto-set by Vercel, but verify)
-- `NEXTAUTH_SECRET`
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_COOKIE_SECRET`
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 - `R2_BUCKET_NAME`
-- `R2_PUBLIC_URL` (optional)
-- `GOOGLE_CLIENT_ID` (optional)
-- `GOOGLE_CLIENT_SECRET` (optional)
+
+Keep the R2 bucket private. SanoVault generates short-lived signed download URLs, so no public bucket URL is required.
+
+**WhatsApp report forwarding (optional):**
+
+1. Create a Meta Business app with WhatsApp Cloud API and a business phone number.
+2. Set webhook URL to `https://www.sanovault.com/api/webhooks/whatsapp` (or your production domain).
+3. Subscribe to the `messages` field. Use the same value for Meta verify token and `WHATSAPP_VERIFY_TOKEN`.
+4. Add Vercel env vars:
+   - `WHATSAPP_VERIFY_TOKEN`
+   - `WHATSAPP_ACCESS_TOKEN`
+   - `WHATSAPP_PHONE_NUMBER_ID`
+   - `WHATSAPP_APP_SECRET` (used to verify `X-Hub-Signature-256`)
+5. In SanoVault, open **Household → WhatsApp intake** and link each sender's phone (country code, digits only).
+6. Users forward a PDF, photo, or text to the business number, pick the person in WhatsApp, then confirm in the app under **Reports → Needs review**.
+
+Optional: set `WHATSAPP_INTERNAL_SECRET` (or reuse `CRON_SECRET`) for `POST /api/internal/whatsapp/process` retries.
 
 **Custom Domain:**
 - Add your domain in Project Settings → Domains
@@ -341,4 +355,3 @@ The #1 cause is missing `NEXTAUTH_SECRET`. Set it in Vercel environment variable
 5. Automatic CI/CD
 6. Preview deployments
 7. Easy environment variable management
-

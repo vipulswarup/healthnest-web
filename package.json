@@ -1,38 +1,53 @@
 {
-  "name": "healthnest-web",
+  "name": "sanovault-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "npm run db:migrate && next build --webpack",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "init-db": "tsx scripts/init-db.ts",
-    "init-categories": "tsx scripts/init-health-record-categories.ts",
-    "init-sources": "tsx scripts/init-healthcare-sources.ts"
+    "postinstall": "node scripts/copy-pdf-worker.mjs",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "init-db": "npm run db:migrate",
+    "test:blood-summary": "tsx scripts/seed-and-test-blood-summary.ts",
+    "test:blood-summary:unit": "tsx --test tests/reports/blood-summary.test.ts",
+    "test:images": "tsx --test tests/images/*.test.ts",
+    "test:security": "tsx --test tests/security/*.test.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.926.0",
-    "@aws-sdk/s3-request-presigner": "^3.926.0",
-    "bcryptjs": "^3.0.3",
+    "@aws-sdk/client-s3": "3.1108.0",
+    "@aws-sdk/s3-request-presigner": "3.1108.0",
+    "@cantoo/pdf-lib": "^2.9.1",
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
+    "@neondatabase/auth": "0.5.0-beta",
+    "@neondatabase/serverless": "^1.1.0",
     "dotenv": "^17.2.3",
-    "mongodb": "^7.0.0",
-    "next": "16.0.10",
-    "next-auth": "^4.24.13",
+    "heic-convert": "^2.1.0",
+    "jose": "^6.2.10",
+    "next": "16.3.0",
+    "pdfjs-dist": "^4.10.38",
+    "pngjs": "^7.0.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "sharp": "^0.35.3",
+    "unpdf": "^1.8.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.10",
+    "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "preact": "10.28.2"
   }
 }

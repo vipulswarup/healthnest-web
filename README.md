@@ -1,22 +1,23 @@
-# HealthNest Web Application
+# SanoVault Web Application
 
-A web-first health record management system built with Next.js, MongoDB, and React.
+A web-first health record management system built with Next.js, Neon Postgres, and React.
 
 ## Tech Stack
 
 - **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS
 - **Backend**: Next.js API Routes
-- **Database**: MongoDB Atlas
-- **Authentication**: NextAuth.js
-- **File Storage**: Cloudflare R2
+- **Database**: Neon Postgres
+- **Authentication**: Neon Auth
+- **Document Storage**: Cloudflare R2 (private bucket with signed downloads)
 - **AI Processing**: Groq (Llama 3.3 70B)
 - **OCR**: Tesseract (hosted on VM)
 
 ## Prerequisites
 
 - Node.js 18+ and npm
-- MongoDB Atlas account
-- Cloudflare R2 account
+- Neon account and project
+- Neon Auth enabled for the production branch
+- Cloudflare account, R2 bucket, and S3 API credentials
 - Groq API key
 - Tesseract OCR service (optional for initial setup)
 
@@ -30,33 +31,25 @@ npm install
 
 ### 2. Environment Variables
 
-Copy `.env.example` to `.env` and fill in your credentials:
+Copy `.env.example` to `.env.local` and fill in your credentials:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
 Required environment variables:
 
-- `MONGODB_URI`: Your MongoDB Atlas connection string
-- `MONGODB_DB_NAME`: Database name (default: `healthnest`)
-- `NEXTAUTH_URL`: Your app URL (e.g., `http://localhost:3001`)
-- `NEXTAUTH_SECRET`: Generate with `openssl rand -base64 32`
-- `R2_ACCOUNT_ID`: Cloudflare R2 account ID
-- `R2_ACCESS_KEY_ID`: Cloudflare R2 access key
-- `R2_SECRET_ACCESS_KEY`: Cloudflare R2 secret key
-- `R2_BUCKET_NAME`: R2 bucket name
-- `R2_PUBLIC_URL`: Public URL for R2 bucket (optional)
+- `DATABASE_URL`: Neon pooled connection string
+- `DIRECT_URL`: Neon direct connection string, used only for migrations
+- `NEON_AUTH_BASE_URL`: Neon Console → Auth → Configuration → Auth URL
+- `NEON_AUTH_COOKIE_SECRET`: Generate with `openssl rand -base64 32`
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`: Cloudflare R2 bucket credentials
 - `GROQ_API_KEY`: Groq API key for AI processing
 - `OCR_SERVICE_URL`: URL of Tesseract OCR service (optional)
 
-Optional OAuth:
-- `GOOGLE_CLIENT_ID`: Google OAuth client ID
-- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
-
 ### 3. Initialize Database
 
-Run the database initialization script to create indexes:
+Run the versioned database migrations:
 
 ```bash
 npm run init-db
@@ -73,7 +66,7 @@ Open [http://localhost:3001](http://localhost:3001) in your browser.
 ## Project Structure
 
 ```
-healthnest-web/
+sanovault-web/
 ├── app/                    # Next.js app router
 │   ├── api/               # API routes
 │   └── ...
@@ -82,7 +75,6 @@ healthnest-web/
 │   ├── db/               # Database utilities
 │   ├── middleware/       # Middleware functions
 │   ├── types/            # TypeScript types
-│   ├── mongodb.ts        # MongoDB connection
 │   └── r2.ts             # Cloudflare R2 client
 ├── scripts/              # Utility scripts
 ├── types/                # Global type definitions
@@ -97,7 +89,7 @@ healthnest-web/
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
-- `npm run init-db` - Initialize MongoDB indexes
+- `npm run init-db` - Apply Neon database migrations
 
 ## API Endpoints
 
@@ -133,9 +125,9 @@ healthnest-web/
 
 ## Database Schema
 
-### Collections
+### Tables
 
-- `users` - App users/owners
+- `profiles` - App users/owners, linked to Neon Auth
 - `patients` - Family member patient profiles
 - `health_records` - Health records and documents
 - `medications` - Medication prescriptions
@@ -166,19 +158,16 @@ Vercel automatically:
 Set these in your deployment platform:
 
 **Required:**
-- `MONGODB_URI` - MongoDB Atlas connection string
-- `MONGODB_DB_NAME` - Database name (default: `healthnest`)
-- `NEXTAUTH_URL` - Your production URL (auto-set by Vercel)
-- `NEXTAUTH_SECRET` - Generate with `openssl rand -base64 32`
+- `DATABASE_URL` - Neon pooled Postgres connection string
+- `DIRECT_URL` - Neon direct connection string for migrations
+- `NEON_AUTH_BASE_URL` - Neon Auth URL
+- `NEON_AUTH_COOKIE_SECRET` - Generate with `openssl rand -base64 32`
 - `R2_ACCOUNT_ID` - Cloudflare R2 account ID
 - `R2_ACCESS_KEY_ID` - Cloudflare R2 access key
 - `R2_SECRET_ACCESS_KEY` - Cloudflare R2 secret key
 - `R2_BUCKET_NAME` - R2 bucket name
 
-**Optional:**
-- `R2_PUBLIC_URL` - Public URL for R2 bucket
-- `GOOGLE_CLIENT_ID` - Google OAuth client ID
-- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
+The bucket should remain private; `R2_PUBLIC_URL` is not needed.
 
 ## License
 

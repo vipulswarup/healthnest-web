@@ -5,7 +5,8 @@ export interface DocumentMetadata {
   fileName: string;
   fileSize: number;
   fileType: string;
-  fileUrl: string;
+  /** A signed URL is deliberately never persisted; fetch one through /api/documents/view. */
+  fileUrl?: string;
   r2Key: string;
   uploadedAt: Date;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -17,7 +18,7 @@ export interface DocumentMetadata {
   // AI Data
   aiStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   classification?: string; // e.g., "Lab Report", "Prescription"
-  extractedData?: Record<string, any>;
+  extractedData?: Record<string, unknown>;
   suggestedTags?: string[];
   confidenceScore?: number;
   
@@ -33,6 +34,5 @@ export interface CreateDocumentInput {
   fileName: string;
   fileSize: number;
   fileType: string;
-  fileUrl: string;
   r2Key: string;
 }

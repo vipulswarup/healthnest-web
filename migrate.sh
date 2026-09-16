@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Migration script to extract healthnest-web into separate GitHub repository
+# Migration script to extract sanovault-web into separate GitHub repository
 # Usage: ./migrate.sh <new-repo-url>
-# Example: ./migrate.sh git@github.com:vipulswarup/healthnest-web.git
+# Example: ./migrate.sh git@github.com:vipulswarup/sanovault-web.git
 
 set -e
 
 if [ -z "$1" ]; then
     echo "Error: Please provide the new repository URL"
     echo "Usage: ./migrate.sh <new-repo-url>"
-    echo "Example: ./migrate.sh git@github.com:vipulswarup/healthnest-web.git"
+    echo "Example: ./migrate.sh git@github.com:vipulswarup/sanovault-web.git"
     exit 1
 fi
 
@@ -21,8 +21,8 @@ echo ""
 
 # Check if we're in the right directory
 if [ ! -f "package.json" ] || [ ! -f "next.config.ts" ]; then
-    echo "❌ Error: This doesn't look like the healthnest-web directory"
-    echo "   Please run this script from the healthnest-web directory"
+    echo "❌ Error: This doesn't look like the sanovault-web directory"
+    echo "   Please run this script from the sanovault-web directory"
     exit 1
 fi
 
@@ -53,10 +53,10 @@ git add .
 
 # Create initial commit
 echo "💾 Creating initial commit..."
-git commit -m "Initial commit: Extract healthnest-web from HealthNest monorepo
+git commit -m "Initial commit: Extract sanovault-web from SanoVault monorepo
 
-- Moved from HealthNest monorepo to standalone repository
-- Next.js web application for HealthNest
+- Moved from SanoVault monorepo to standalone repository
+- Next.js web application for SanoVault
 - Includes all dependencies and configuration"
 
 # Add new remote
@@ -86,7 +86,7 @@ echo ""
 echo "📋 Next steps:"
 echo "   1. Go to Vercel Dashboard"
 echo "   2. Update project to use new repository: $NEW_REPO_URL"
-echo "   3. Set Root Directory to empty (not 'healthnest-web')"
+echo "   3. Set Root Directory to empty (not 'sanovault-web')"
 echo "   4. Verify environment variables are set"
 echo "   5. Redeploy!"
 echo ""

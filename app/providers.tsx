@@ -1,8 +1,16 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
+import { HouseholdProvider } from '@/components/households/useHouseholdContext';
+import AddToHomeScreenPrompt from '@/components/pwa/AddToHomeScreenPrompt';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <ToastProvider>
+      <HouseholdProvider>
+        {children}
+        <AddToHomeScreenPrompt />
+      </HouseholdProvider>
+    </ToastProvider>
+  );
 }
-

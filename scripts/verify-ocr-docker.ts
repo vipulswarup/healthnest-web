@@ -15,8 +15,8 @@ async function main() {
         const text = await extractTextFromImage(testImageUrl);
         console.log('OCR Output Length:', text.length);
         console.log('OCR Output Preview:', text.substring(0, 50));
-    } catch (error: any) {
-        console.error('OCR Verification Failed:', error.message);
+    } catch (error) {
+        console.error('OCR Verification Failed:', error instanceof Error ? error.message : error);
     }
 
     // Test 2: AI Classification with Dynamic Types
@@ -32,8 +32,8 @@ async function main() {
         } else {
             console.log(`NOTE: Classified as '${result.classification}'. (Expected 'Pathology Test' ideally, but depends on AI)`);
         }
-    } catch (error: any) {
-        console.error('AI Verification Failed:', error.message);
+    } catch (error) {
+        console.error('AI Verification Failed:', error instanceof Error ? error.message : error);
     }
 }
 

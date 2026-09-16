@@ -15,7 +15,7 @@ export interface User {
   mobileNumbers: MobileNumber[];
   createdAt: Date;
   updatedAt: Date;
-  preferences: Record<string, any>;
+  preferences: Record<string, unknown>;
   onboardingCompleted: boolean;
   password?: string;
   authProvider?: 'credentials' | 'google';
@@ -41,7 +41,6 @@ export interface UpdateUserInput {
   suffix?: string;
   emails?: string[];
   mobileNumbers?: MobileNumber[];
-  preferences?: Record<string, any>;
+  preferences?: Record<string, unknown>;
   onboardingCompleted?: boolean;
 }
-

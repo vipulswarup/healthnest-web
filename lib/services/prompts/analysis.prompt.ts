@@ -1,20 +1,30 @@
 export const analysisPrompt = `
-You are a medical document analyzer. Your task is to analyze the text provided from a medical document and provide a comprehensive JSON response containing:
+You are a document analyzer for a family health vault. Analyze the document text and return a JSON object with:
 
-1. **Classification**: Classify the document into one of the provided "Valid Categories".
-2. **Confidence**: A confidence score between 0 and 1.
-3. **Source**: Extract the name of the Hospital, Clinic, Lab, or Provider where this document originated (e.g., "Apollo Hospital", "Dr. Smith's Clinic"). If not found, return null.
-4. **DoctorName**: Extract the name of the doctor, physician, or healthcare provider who authored, signed, or is associated with this document (e.g., "Dr. John Smith", "Dr. A. Kumar"). Look for patterns like "Dr.", "Doctor", signatures, or names in headers/footers. If not found, return null.
-5. **DocumentDate**: Extract the date when the document was created, written, or reported. This could be a prescription date, test report date, consultation date, etc. Look for date patterns in the document header, footer, or near signatures. Return the date in ISO format (YYYY-MM-DD). If not found, return null.
-6. **Tags**: Suggest up to 5 relevant tags for organizing this document (e.g., "blood_test", "cardiology", "urgent").
+1. **classification**: MUST be exactly one of the "Valid Categories" listed below. Do not invent new category names. Examples of mapping:
+   - Diagnostic/lab/pathology/blood/urine reports -> the lab/pathology category from Valid Categories
+   - X-ray/MRI/CT/ultrasound -> the imaging category from Valid Categories
+   - Prescriptions/medication orders -> the prescription category from Valid Categories
+   - Identity papers (Aadhaar, PAN, passport, driving licence/license, voter ID, SSN card, green card, UK NI, BRP) -> the ID document category from Valid Categories
+2. **confidence**: Number between 0 and 1.
+3. **source**: For medical reports, hospital/clinic/lab name. For ID documents, issuing authority (e.g. UIDAI, Passport Seva, DVLA). null if not found.
+4. **doctorName**: Doctor/physician for medical reports only. MUST be null for ID documents.
+5. **documentDate**: YYYY-MM-DD. For medical reports prefer reported date. For ID documents use issued/printed date. null if not found.
+6. **idType**: For ID documents only, one of: Aadhaar, PAN, Passport, Voter ID, Driving licence, State ID, Social Security card, Green card, Employment authorization, UK biometric residence permit, UK National Insurance, Other ID. null for medical reports.
+7. **expiryDate**: For ID documents only, expiry date as YYYY-MM-DD. null if not printed or not an ID.
+8. **tags**: Up to 5 lowercase snake_case tags.
+
+Do not extract or return ID numbers (Aadhaar, PAN, passport numbers, SSN).
 
 Output Format (JSON only):
 {
-  "classification": "Category Name",
+  "classification": "Exact Valid Category Name",
   "confidence": 0.95,
-  "source": "Provider Name",
-  "doctorName": "Dr. John Smith",
+  "source": "Provider or authority",
+  "doctorName": null,
   "documentDate": "2024-12-19",
+  "idType": "Aadhaar",
+  "expiryDate": null,
   "tags": ["tag1", "tag2"]
 }
 `;

@@ -6,7 +6,8 @@ import { analysisPrompt } from './prompts/analysis.prompt';
 import { DEFAULT_TAGS } from '../constants/tags';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+/** llama-3.3-70b-versatile shut down on Groq 2026-08-16. */
+const MODEL = process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b';
 
 export interface AnalysisResult {
     classification: string;
@@ -14,13 +15,14 @@ export interface AnalysisResult {
     source: string | null;
     doctorName: string | null;
     documentDate: string | null;
+    idType: string | null;
+    expiryDate: string | null;
     tags: string[];
 }
 
 async function callGroq(prompt: string, systemPrompt: string): Promise<string> {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-        console.warn('GROQ_API_KEY is missing. Returning mock AI response.');
         return JSON.stringify({ mock: true, message: "AI Service Unavailable" });
     }
 
@@ -42,165 +44,108 @@ async function callGroq(prompt: string, systemPrompt: string): Promise<string> {
             }),
         });
 
-        // DEBUG LOGGING
-        console.log('\n--- GROQ AI REQUEST ---');
-        console.log('System Prompt:', systemPrompt);
-        console.log('User Prompt:', prompt);
-        console.log('-----------------------\n');
-
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+            throw new Error(`Groq API error: ${response.status}`);
         }
 
         const data = await response.json();
         const aiResponse = data.choices[0]?.message?.content || '{}';
         
-        // DEBUG LOGGING - Raw AI Response
-        console.log('\n--- GROQ AI RESPONSE ---');
-        console.log('Raw Response:', aiResponse);
-        console.log('-----------------------\n');
-        
         return aiResponse;
-    } catch (error) {
-        console.error('AI Service Error:', error);
+    } catch {
         throw new AppError('Failed to process request with AI service', 502);
     }
 }
 
 import { getRecordTypeOptions } from '../constants/labels';
+import {
+    getAllCategories,
+    getValidCategoryDisplayNames,
+    resolveClassification,
+} from './category.service';
+
+async function getValidCategoryLabels(): Promise<string[]> {
+    try {
+        const categories = await getAllCategories();
+        const names = getValidCategoryDisplayNames(categories);
+        if (names.length > 0) return names;
+    } catch {
+        // The static label set is intentionally retained as a resilient fallback.
+    }
+    return getRecordTypeOptions().map((opt) => opt.label);
+}
 
 export async function analyzeDocument(text: string): Promise<AnalysisResult> {
-    const recordTypes = getRecordTypeOptions().map(opt => `- "${opt.label}"`).join('\n');
-    const dynamicSystemPrompt = `${analysisPrompt}\n\nValid Categories:\n${recordTypes}`;
+    const validCategories = await getValidCategoryLabels();
+    const recordTypes = validCategories.map((label) => `- "${label}"`).join('\n');
+    const dynamicSystemPrompt =
+        `${analysisPrompt}\n\nValid Categories (classification MUST be exactly one of these strings):\n${recordTypes}`;
 
     const response = await callGroq(text, dynamicSystemPrompt);
     try {
         const result = JSON.parse(response);
-        
-        // DEBUG LOGGING - Parsed Result
-        console.log('\n--- AI ANALYSIS RESULT ---');
-        console.log('Classification:', result.classification);
-        console.log('Confidence:', result.confidence);
-        console.log('Source:', result.source);
-        console.log('Doctor Name:', result.doctorName);
-        console.log('Document Date (raw):', result.documentDate);
-        console.log('Document Date (type):', typeof result.documentDate);
-        console.log('Tags:', result.tags);
-        console.log('Full Result:', JSON.stringify(result, null, 2));
-        console.log('-----------------------\n');
-        
-        // Use all tags returned by AI, normalize them
+        const classification = resolveClassification(result.classification, validCategories);
+
         const aiTags: string[] = result.tags || [];
         const normalizedTags = aiTags
             .map(tag => normalizeTag(String(tag)))
-            .filter((tag, index, arr) => tag && arr.indexOf(tag) === index); // Remove empty and duplicates
-        
+            .filter((tag: string, index: number, arr: string[]) => tag && arr.indexOf(tag) === index);
+
+        const isIdDocument = classification.toLowerCase() === 'id document';
         return {
-            ...result,
-            doctorName: result.doctorName || null,
+            classification,
+            confidence: typeof result.confidence === 'number' ? result.confidence : 0,
+            source: result.source || null,
+            doctorName: isIdDocument ? null : (result.doctorName || null),
             documentDate: result.documentDate || null,
+            idType: isIdDocument ? (result.idType || null) : null,
+            expiryDate: isIdDocument ? (result.expiryDate || null) : null,
             tags: normalizedTags
         };
-    } catch (e) {
-        console.error("Failed to parse AI analysis response");
-        console.error("Raw response:", response);
-        console.error("Parse error:", e);
+    } catch {
         return {
-            classification: "Unknown",
+            classification: resolveClassification(null, validCategories),
             confidence: 0,
             source: null,
             doctorName: null,
             documentDate: null,
+            idType: null,
+            expiryDate: null,
             tags: []
         };
     }
 }
 
 export async function classifyDocument(text: string): Promise<{ classification: string; confidence: number }> {
-    const recordTypes = getRecordTypeOptions().map(opt => `- "${opt.label}"`).join('\n');
-    // Replace the default static list in the prompt (or append to it) - simpler to just pass it in role
-    // But since the prompt file is static, let's prepend the dynamic list to the user prompt or system prompt
-
-    // Actually, prompt.ts has a static list. I should update prompt.ts to have a placeholder or just override it here.
-    // For now, let's append the valid categories to the system prompt to enforce strict adherence.
-    const dynamicSystemPrompt = `${classificationPrompt}\n\nValid Categories:\n${recordTypes}`;
+    const validCategories = await getValidCategoryLabels();
+    const recordTypes = validCategories.map((label) => `- "${label}"`).join('\n');
+    const dynamicSystemPrompt =
+        `${classificationPrompt}\n\nValid Categories (classification MUST be exactly one of these strings):\n${recordTypes}`;
 
     const response = await callGroq(text, dynamicSystemPrompt);
     try {
-        return JSON.parse(response);
-    } catch (e) {
-        console.error("Failed to parse AI classification response", response);
-        return { classification: "Unknown", confidence: 0 };
+        const parsed = JSON.parse(response);
+        return {
+            classification: resolveClassification(parsed.classification, validCategories),
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0,
+        };
+    } catch {
+        return { classification: resolveClassification(null, validCategories), confidence: 0 };
     }
 }
 
-export async function extractData(text: string, documentType: string): Promise<Record<string, any>> {
+export async function extractData(text: string, documentType: string): Promise<Record<string, unknown>> {
     const systemPrompt = extractionPrompt.replace('{{DOCUMENT_TYPE}}', documentType);
     const response = await callGroq(text, systemPrompt);
     try {
         return JSON.parse(response);
-    } catch (e) {
-        console.error("Failed to parse AI extraction response", response);
+    } catch {
         return {};
     }
 }
 
 function normalizeTag(tag: string): string {
     return tag.toLowerCase().trim().replace(/\s+/g, '_');
-}
-
-function matchTagToExisting(aiTag: string): string | null {
-    const normalized = normalizeTag(aiTag);
-    const defaultTagsLower = DEFAULT_TAGS.map(t => t.toLowerCase());
-    
-    // Exact match
-    if (defaultTagsLower.includes(normalized)) {
-        return DEFAULT_TAGS[defaultTagsLower.indexOf(normalized)];
-    }
-    
-    // Fuzzy matching for common variations
-    const tagVariations: Record<string, string> = {
-        'lab': 'lab_report',
-        'laboratory': 'lab_report',
-        'lab_test': 'lab_report',
-        'lab_result': 'lab_report',
-        'scan': 'scan_result',
-        'imaging': 'scan_result',
-        'radiology': 'scan_result',
-        'xray': 'scan_result',
-        'ct_scan': 'scan_result',
-        'mri': 'scan_result',
-        'prescription': 'prescription',
-        'meds': 'medication',
-        'medication': 'medication',
-        'drug': 'medication',
-        'discharge': 'discharge_summary',
-        'discharge_note': 'discharge_summary',
-        'consult': 'consultation',
-        'consultation': 'consultation',
-        'visit': 'consultation',
-        'appointment': 'consultation',
-        'symptom': 'symptom',
-        'symptoms': 'symptom',
-        'vitals': 'vital_signs',
-        'vital': 'vital_signs',
-        'vital_sign': 'vital_signs',
-    };
-    
-    if (tagVariations[normalized]) {
-        return tagVariations[normalized];
-    }
-    
-    // Check if tag contains any default tag as substring
-    for (const defaultTag of DEFAULT_TAGS) {
-        const defaultTagLower = defaultTag.toLowerCase();
-        if (normalized.includes(defaultTagLower) || defaultTagLower.includes(normalized)) {
-            return defaultTag;
-        }
-    }
-    
-    return null;
 }
 
 export interface TagSuggestionResult {
@@ -233,8 +178,7 @@ export async function suggestTags(text: string): Promise<TagSuggestionResult> {
             newTags,
             allTags: normalizedTags
         };
-    } catch (e) {
-        console.error("Failed to parse AI tagging response", response);
+    } catch {
         return {
             matchedTags: [],
             newTags: [],

@@ -5,12 +5,12 @@ export interface HealthRecord {
   createdAt: Date;
   updatedAt: Date;
   recordType: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   tags: string[];
   source: string;
   doctorName?: string;
   documentDate?: Date | string;
-  documentPath?: string;
+  documentId?: string;
   ocrText?: string;
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
@@ -20,12 +20,12 @@ export interface HealthRecord {
 export interface CreateHealthRecordInput {
   patientId: string;
   recordType: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   tags?: string[];
   source: string;
   doctorName?: string;
   documentDate?: string;
-  documentPath?: string;
+  documentId?: string;
   ocrText?: string;
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
@@ -34,14 +34,13 @@ export interface CreateHealthRecordInput {
 
 export interface UpdateHealthRecordInput {
   recordType?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   tags?: string[];
   source?: string;
   doctorName?: string;
   documentDate?: string;
-  documentPath?: string;
+  documentId?: string;
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
   hospitalIdentifierValue?: string;
 }
-

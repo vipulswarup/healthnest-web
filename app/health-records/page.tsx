@@ -1,12 +1,18 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import { useSession } from '@/lib/auth/client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Chip } from '@heroui/react';
+import AppNav from '@/components/layout/AppNav';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/ToastProvider';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 import { HealthcareSource } from '@/lib/types/healthcare-source.types';
+import { humanizeLabel } from '@/lib/constants/labels';
+import { getLastPatientId, setLastPatientId } from '@/lib/patients/last-used';
+import { svBtnOutline, svBtnPrimary } from '@/lib/ui/buttons';
 
 interface HealthRecord {
   id: string;
@@ -17,7 +23,7 @@ interface HealthRecord {
   documentDate?: string;
   createdAt: string;
   tags: string[];
-  documentPath?: string;
+  documentId?: string;
 }
 
 interface Patient {
@@ -26,46 +32,49 @@ interface Patient {
   lastName?: string;
 }
 
-export default function HealthRecordsPage() {
+function HealthRecordsContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { notify } = useToast();
+  const requestedPatientId = searchParams.get('patientId') || '';
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [patients, setPatients] = useState<Record<string, Patient>>({});
   const [categories, setCategories] = useState<HealthRecordCategory[]>([]);
   const [sources, setSources] = useState<HealthcareSource[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(requestedPatientId);
   const [loading, setLoading] = useState(true);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [error, setError] = useState('');
   
   // Search and filter state
-  const [keyword, setKeyword] = useState('');
-  const [filterSource, setFilterSource] = useState('');
-  const [filterRecordType, setFilterRecordType] = useState('');
-  const [filterTag, setFilterTag] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [keyword, setKeyword] = useState(searchParams.get('keyword') || '');
+  const [filterSource, setFilterSource] = useState(searchParams.get('source') || '');
+  const [filterRecordType, setFilterRecordType] = useState(searchParams.get('recordType') || '');
+  const [filterTag, setFilterTag] = useState(searchParams.get('tag') || '');
+  const [startDate, setStartDate] = useState(searchParams.get('startDate') || '');
+  const [endDate, setEndDate] = useState(searchParams.get('endDate') || '');
+  const [showFilters, setShowFilters] = useState(
+    ['source', 'recordType', 'tag', 'startDate', 'endDate'].some((key) => searchParams.has(key)),
+  );
+  const [recordPendingDelete, setRecordPendingDelete] = useState<string | null>(null);
+
+  const updateQuery = useCallback((updates: Record<string, string>) => {
+    const params = new URLSearchParams(window.location.search);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    });
+    const query = params.toString();
+    router.replace(query ? `/health-records?${query}` : '/health-records', { scroll: false });
+  }, [router]);
 
   const getRecordTypeLabel = (code: string): string => {
     const category = categories.find(cat => cat.code === code);
-    return category?.displayName || code;
+    return category?.displayName || humanizeLabel(code);
   };
 
-  useEffect(() => {
-    if (status === 'loading') return;
-
-    if (!session) {
-      router.push('/auth/signin');
-      return;
-    }
-
-    fetchPatients();
-    fetchCategories();
-    fetchSources();
-  }, [session, status, router]);
-
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       const response = await fetch('/api/health-record-categories');
       if (response.ok) {
@@ -75,9 +84,9 @@ export default function HealthRecordsPage() {
     } catch (err) {
       console.error('Failed to fetch categories:', err);
     }
-  };
+  }, []);
 
-  const fetchSources = async () => {
+  const fetchSources = useCallback(async () => {
     try {
       const response = await fetch('/api/healthcare-sources');
       if (response.ok) {
@@ -87,17 +96,14 @@ export default function HealthRecordsPage() {
     } catch (err) {
       console.error('Failed to fetch sources:', err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      fetchRecords();
-    }, keyword ? 300 : 0); // Debounce keyword search by 300ms
+    const timeoutId = window.setTimeout(() => updateQuery({ keyword }), 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [keyword, updateQuery]);
 
-    return () => clearTimeout(timeoutId);
-  }, [selectedPatientId, keyword, filterSource, filterRecordType, filterTag, startDate, endDate]);
-
-  const fetchPatients = async () => {
+  const fetchPatients = useCallback(async () => {
     try {
       const response = await fetch('/api/patients');
       if (!response.ok) {
@@ -110,17 +116,23 @@ export default function HealthRecordsPage() {
       });
       setPatients(patientsMap);
       
-      if (data.length > 0 && !selectedPatientId) {
-        setSelectedPatientId(data[0].id);
+      if (data.length > 0) {
+        const stored = getLastPatientId();
+        const nextPatientId = requestedPatientId && data.some((patient: Patient) => patient.id === requestedPatientId)
+          ? requestedPatientId
+          : (stored && data.some((patient: Patient) => patient.id === stored) ? stored : data[0].id);
+        setSelectedPatientId(nextPatientId);
+        if (nextPatientId) setLastPatientId(nextPatientId);
+        if (nextPatientId !== requestedPatientId) updateQuery({ patientId: nextPatientId });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [requestedPatientId, updateQuery]);
 
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     try {
       setRecordsLoading(true);
       const params = new URLSearchParams();
@@ -158,13 +170,27 @@ export default function HealthRecordsPage() {
     } finally {
       setRecordsLoading(false);
     }
-  };
+  }, [endDate, filterRecordType, filterSource, filterTag, keyword, selectedPatientId, startDate]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this health record?')) {
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!session?.user?.id) {
+      router.push('/auth/signin');
       return;
     }
+    void fetchPatients();
+    void fetchCategories();
+    void fetchSources();
+  }, [fetchCategories, fetchPatients, fetchSources, router, session?.user?.id, status]);
 
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void fetchRecords();
+    }, keyword ? 300 : 0);
+    return () => clearTimeout(timeoutId);
+  }, [fetchRecords, keyword]);
+
+  const handleDelete = async (id: string) => {
     try {
       const response = await fetch(`/api/health-records/${id}`, {
         method: 'DELETE',
@@ -174,15 +200,19 @@ export default function HealthRecordsPage() {
         throw new Error('Failed to delete health record');
       }
 
-      fetchRecords();
+      await fetchRecords();
+      notify('Health record deleted.', 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete health record');
+      notify(err instanceof Error ? err.message : 'Failed to delete health record', 'error');
+    } finally {
+      setRecordPendingDelete(null);
     }
   };
 
   const handleTagClick = (tag: string) => {
     setFilterTag(tag);
     setShowFilters(true);
+    updateQuery({ tag });
   };
 
   const clearFilters = () => {
@@ -192,6 +222,7 @@ export default function HealthRecordsPage() {
     setFilterTag('');
     setStartDate('');
     setEndDate('');
+    updateQuery({ keyword: '', source: '', recordType: '', tag: '', startDate: '', endDate: '' });
   };
 
   const hasActiveFilters = keyword || filterSource || filterRecordType || filterTag || startDate || endDate;
@@ -203,7 +234,7 @@ export default function HealthRecordsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0175C2] mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-coral mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -216,141 +247,122 @@ export default function HealthRecordsPage() {
 
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
+      return new Intl.DateTimeFormat('en-IN', {
         day: 'numeric',
-      });
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(dateString));
     } catch {
       return dateString;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <nav className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center space-x-3">
-              <Link href="/dashboard">
-                <Image
-                  src="/android-chrome-512x512.png"
-                  alt="HealthNest Logo"
-                  width={40}
-                  height={40}
-                  className="rounded-full cursor-pointer"
-                />
-              </Link>
-              <Link href="/dashboard">
-                <h1 className="text-xl font-bold text-gray-900 cursor-pointer">HealthNest</h1>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard"
-                className="text-sm text-gray-700 hover:text-[#0175C2] transition-colors"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/patients"
-                className="text-sm text-gray-700 hover:text-[#0175C2] transition-colors"
-              >
-                Patients
-              </Link>
-              <Link
-                href="/health-records"
-                className="text-sm font-medium text-[#0175C2]"
-              >
-                Health Records
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-slate-50">
+      <AppNav />
 
       <main className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-900">Health Records</h2>
-            {selectedPatientId && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-3xl font-bold text-ink">Reports</h1>
+            <div className="flex flex-wrap items-center gap-3">
               <Link
-                href={`/health-records/new?patientId=${selectedPatientId}`}
-                className="bg-[#0175C2] hover:bg-[#015a96] text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                href="/health-records?tag=needs_review"
+                className={`inline-flex min-h-12 items-center text-base font-medium ${filterTag === 'needs_review' ? 'text-ink underline' : 'text-coral hover:underline'}`}
               >
-                + Add Record
+                Needs review
               </Link>
-            )}
+              <Link
+                href={selectedPatientId ? `/reports/blood-summary?patientId=${selectedPatientId}` : '/reports/blood-summary'}
+                className="inline-flex min-h-12 items-center text-base font-medium text-coral hover:underline"
+              >
+                Blood Work
+              </Link>
+              {selectedPatientId && (
+                <Link
+                  href={`/health-records/new?patientId=${selectedPatientId}`}
+                  className={svBtnPrimary}
+                >
+                  Add a Report
+                </Link>
+              )}
+            </div>
           </div>
 
           {Object.keys(patients).length === 0 ? (
-            <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
-              <div className="text-6xl mb-4">👥</div>
+            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                No patients found
+                Add a Person First
               </h3>
               <p className="text-gray-600 mb-6">
-                You need to add a patient first before creating health records.
+                Reports need a name, such as Dad or your daughter.
               </p>
               <Link
                 href="/patients/new"
-                className="inline-block bg-[#0175C2] hover:bg-[#015a96] text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                className={svBtnPrimary}
               >
-                Add Patient
+                Add a Person
               </Link>
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-                <div className="mb-4">
-                  <label htmlFor="patient" className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient
-                  </label>
-                  <select
-                    id="patient"
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
-                  >
-                    <option value="">All Patients</option>
-                    {Object.values(patients).map((patient) => (
-                      <option key={patient.id} value={patient.id}>
-                        {patient.firstName} {patient.lastName || ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
+              <div className="mb-6 rounded-xl border border-silver bg-white p-6 shadow-sm">
+                <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)_auto] md:items-end">
+                  <div>
+                    <label htmlFor="patient" className="mb-2 block text-sm font-medium text-blue-slate">
+                      Person
+                    </label>
+                    <select
+                      id="patient"
+                      value={selectedPatientId}
+                      onChange={(e) => {
+                        setSelectedPatientId(e.target.value);
+                        if (e.target.value) setLastPatientId(e.target.value);
+                        updateQuery({ patientId: e.target.value });
+                      }}
+                      className="w-full rounded-lg border border-silver px-4 py-2.5 text-ink focus:border-coral focus:outline-none focus:ring-2 focus:ring-coral/30"
+                    >
+                      <option value="">Everyone</option>
+                      {Object.values(patients).map((patient) => (
+                        <option key={patient.id} value={patient.id}>
+                          {patient.firstName} {patient.lastName || ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="report-search" className="mb-2 block text-sm font-medium text-blue-slate">
+                      Search
+                    </label>
+                    <div className="relative">
                       <input
+                        id="report-search"
                         type="text"
-                        placeholder="Search records..."
+                        placeholder="Search Records..."
                         value={keyword}
                         onChange={(e) => setKeyword(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        className="w-full rounded-lg border border-silver px-4 py-2.5 text-ink focus:border-coral focus:outline-none focus:ring-2 focus:ring-coral/30"
                       />
                       {recordsLoading && (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#0175C2]"></div>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-coral"></div>
                         </div>
                       )}
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     <button
+                      type="button"
                       onClick={() => setShowFilters(!showFilters)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        showFilters || hasActiveFilters
-                          ? 'bg-[#0175C2] text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      className={showFilters || hasActiveFilters ? svBtnPrimary : svBtnOutline}
                     >
-                      Filters {hasActiveFilters && `(${[keyword, filterSource, filterRecordType, filterTag, startDate, endDate].filter(Boolean).length})`}
+                      Find a Report {hasActiveFilters && `(${[keyword, filterSource, filterRecordType, filterTag, startDate, endDate].filter(Boolean).length})`}
                     </button>
                     {hasActiveFilters && (
                       <button
+                        type="button"
                         onClick={clearFilters}
-                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                        className={svBtnOutline}
                       >
                         Clear
                       </button>
@@ -367,8 +379,11 @@ export default function HealthRecordsPage() {
                       <select
                         id="filterSource"
                         value={filterSource}
-                        onChange={(e) => setFilterSource(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        onChange={(e) => {
+                          setFilterSource(e.target.value);
+                          updateQuery({ source: e.target.value });
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coral focus:border-transparent"
                       >
                         <option value="">All Sources</option>
                         {sources.map((source) => (
@@ -386,8 +401,11 @@ export default function HealthRecordsPage() {
                       <select
                         id="filterRecordType"
                         value={filterRecordType}
-                        onChange={(e) => setFilterRecordType(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        onChange={(e) => {
+                          setFilterRecordType(e.target.value);
+                          updateQuery({ recordType: e.target.value });
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coral focus:border-transparent"
                       >
                         <option value="">All Types</option>
                         {categories.map((category) => (
@@ -405,13 +423,16 @@ export default function HealthRecordsPage() {
                       <select
                         id="filterTag"
                         value={filterTag}
-                        onChange={(e) => setFilterTag(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        onChange={(e) => {
+                          setFilterTag(e.target.value);
+                          updateQuery({ tag: e.target.value });
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coral focus:border-transparent"
                       >
                         <option value="">All Tags</option>
                         {allTags.map((tag) => (
                           <option key={tag} value={tag}>
-                            {tag}
+                            {humanizeLabel(tag)}
                           </option>
                         ))}
                       </select>
@@ -425,8 +446,11 @@ export default function HealthRecordsPage() {
                         type="date"
                         id="startDate"
                         value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          updateQuery({ startDate: e.target.value });
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coral focus:border-transparent"
                       />
                     </div>
 
@@ -438,8 +462,11 @@ export default function HealthRecordsPage() {
                         type="date"
                         id="endDate"
                         value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0175C2] focus:border-transparent"
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          updateQuery({ endDate: e.target.value });
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coral focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -452,7 +479,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
                           Keyword: {keyword}
                           <button
-                            onClick={() => setKeyword('')}
+                            onClick={() => {
+                              setKeyword('');
+                              updateQuery({ keyword: '' });
+                            }}
+                            aria-label="Remove keyword filter"
                             className="ml-2 hover:text-blue-600"
                           >
                             ×
@@ -463,7 +494,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
                           Source: {filterSource}
                           <button
-                            onClick={() => setFilterSource('')}
+                            onClick={() => {
+                              setFilterSource('');
+                              updateQuery({ source: '' });
+                            }}
+                            aria-label="Remove source filter"
                             className="ml-2 hover:text-green-600"
                           >
                             ×
@@ -474,7 +509,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">
                           Type: {getRecordTypeLabel(filterRecordType)}
                           <button
-                            onClick={() => setFilterRecordType('')}
+                            onClick={() => {
+                              setFilterRecordType('');
+                              updateQuery({ recordType: '' });
+                            }}
+                            aria-label="Remove record type filter"
                             className="ml-2 hover:text-purple-600"
                           >
                             ×
@@ -485,7 +524,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-yellow-100 text-yellow-800">
                           Tag: {filterTag}
                           <button
-                            onClick={() => setFilterTag('')}
+                            onClick={() => {
+                              setFilterTag('');
+                              updateQuery({ tag: '' });
+                            }}
+                            aria-label="Remove tag filter"
                             className="ml-2 hover:text-yellow-600"
                           >
                             ×
@@ -496,7 +539,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-800">
                           From: {startDate}
                           <button
-                            onClick={() => setStartDate('')}
+                            onClick={() => {
+                              setStartDate('');
+                              updateQuery({ startDate: '' });
+                            }}
+                            aria-label="Remove start date filter"
                             className="ml-2 hover:text-gray-600"
                           >
                             ×
@@ -507,7 +554,11 @@ export default function HealthRecordsPage() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-800">
                           To: {endDate}
                           <button
-                            onClick={() => setEndDate('')}
+                            onClick={() => {
+                              setEndDate('');
+                              updateQuery({ endDate: '' });
+                            }}
+                            aria-label="Remove end date filter"
                             className="ml-2 hover:text-gray-600"
                           >
                             ×
@@ -526,22 +577,21 @@ export default function HealthRecordsPage() {
               )}
 
               {records.length === 0 ? (
-                <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
-                  <div className="text-6xl mb-4">📋</div>
+                <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {hasActiveFilters ? 'No records match your filters' : 'No health records yet'}
+                    {hasActiveFilters ? 'Nothing matched' : 'No reports yet'}
                   </h3>
                   <p className="text-gray-600 mb-6">
-                    {hasActiveFilters 
-                      ? 'Try adjusting your search criteria or clear filters to see all records.'
-                      : 'Start by adding a health record.'}
+                    {hasActiveFilters
+                      ? 'Try a simpler search, or clear it to see everything.'
+                      : 'Add the first report for this person.'}
                   </p>
                   {selectedPatientId && !hasActiveFilters && (
                     <Link
                       href={`/health-records/new?patientId=${selectedPatientId}`}
-                      className="inline-block bg-[#0175C2] hover:bg-[#015a96] text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                      className={svBtnPrimary}
                     >
-                      Add Health Record
+                      Add a Report
                     </Link>
                   )}
                   {hasActiveFilters && (
@@ -554,85 +604,89 @@ export default function HealthRecordsPage() {
                   )}
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="text-sm text-gray-600 mb-2">
-                    Found {records.length} record{records.length !== 1 ? 's' : ''}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
+                    {records.length} report{records.length !== 1 ? 's' : ''}
                   </div>
-                  {records.map((record) => (
-                    <div
-                      key={record.id}
-                      className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-6"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                              {getRecordTypeLabel(record.recordType)}
-                            </h3>
-                            {record.documentPath && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                Has Document
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600 mb-2">
-                            Source: {record.source}
-                            {record.doctorName && (
-                              <span className="ml-2">• {record.doctorName}</span>
-                            )}
+                  <ul className="divide-y divide-gray-100">
+                    {records.map((record) => (
+                      <li key={record.id} className="flex items-start gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-gray-950">
+                            {getRecordTypeLabel(record.recordType)}
+                            {record.documentId ? (
+                              <span className="ml-2 text-xs font-normal text-coral">File</span>
+                            ) : null}
                           </p>
-                          <p className="text-sm text-gray-500 mb-2">
-                            {record.documentDate ? (
-                              <>
-                                Document Date: {formatDate(record.documentDate)}
-                                <span className="ml-2">• Created: {formatDate(record.createdAt)}</span>
-                              </>
-                            ) : (
-                              formatDate(record.createdAt)
-                            )}
-                            {patients[record.patientId] && (
-                              <span className="ml-2">
-                                • {patients[record.patientId].firstName} {patients[record.patientId].lastName || ''}
-                              </span>
-                            )}
+                          <p className="mt-0.5 truncate text-sm text-gray-600">
+                            {record.source}
+                            {record.doctorName ? ` · ${record.doctorName}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-sm text-gray-500">
+                            {formatDate(record.documentDate || record.createdAt)}
+                            {patients[record.patientId]
+                              ? ` · ${patients[record.patientId].firstName} ${patients[record.patientId].lastName || ''}`.trimEnd()
+                              : ''}
                           </p>
                           {record.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {record.tags.map((tag, idx) => (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {record.tags.map((tag) => (
                                 <button
-                                  key={idx}
+                                  key={tag}
+                                  type="button"
                                   onClick={() => handleTagClick(tag)}
-                                  className="text-xs bg-gray-100 hover:bg-[#0175C2] hover:text-white text-gray-700 px-2 py-1 rounded transition-colors cursor-pointer"
+                                  className="rounded-full"
                                 >
-                                  {tag}
+                                  <Chip size="sm" variant="soft">
+                                    <Chip.Label>{humanizeLabel(tag)}</Chip.Label>
+                                  </Chip>
                                 </button>
                               ))}
                             </div>
                           )}
                         </div>
-                        <div className="flex space-x-2 ml-4">
+                        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                           <Link
                             href={`/health-records/${record.id}`}
-                            className="bg-blue-50 hover:bg-blue-100 text-[#0175C2] px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-50 px-3 text-sm font-medium text-coral hover:bg-blue-100"
                           >
                             View
                           </Link>
                           <button
-                            onClick={() => handleDelete(record.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                            type="button"
+                            onClick={() => setRecordPendingDelete(record.id)}
+                            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-red-50 px-3 text-sm font-medium text-red-600 hover:bg-red-100"
                           >
                             Delete
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </>
           )}
         </div>
       </main>
+      <ConfirmDialog
+        open={Boolean(recordPendingDelete)}
+        title="Delete this health record?"
+        description="This permanently removes the record and its extracted health information. The action cannot be undone."
+        confirmLabel="Delete record"
+        onCancel={() => setRecordPendingDelete(null)}
+        onConfirm={() => {
+          if (recordPendingDelete) void handleDelete(recordPendingDelete);
+        }}
+      />
     </div>
+  );
+}
+
+export default function HealthRecordsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen grid place-items-center text-gray-600" role="status">Loading health records…</div>}>
+      <HealthRecordsContent />
+    </Suspense>
   );
 }

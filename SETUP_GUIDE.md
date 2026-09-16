@@ -1,37 +1,37 @@
-# HealthNest Setup & Testing Guide
+# SanoVault Setup & Testing Guide
 
-This guide will help you set up and test the foundation of HealthNest.
+This guide will help you set up and test the foundation of SanoVault.
 
 ## Step 1: Environment Variables Setup
 
 1. Copy the example environment file:
    ```bash
-   cd healthnest-web
-   cp .env.example .env
+   cd sanovault-web
+   cp .env.example .env.local
    ```
 
-2. Generate a NextAuth secret:
+2. Generate a Neon Auth cookie secret:
    ```bash
    openssl rand -base64 32
    ```
-   Copy the output - you'll need it for `NEXTAUTH_SECRET`.
+   Copy the output - you'll need it for `NEON_AUTH_COOKIE_SECRET`.
 
 3. Edit `.env` and fill in the following:
 
 ### Required for Basic Testing:
 
-**MongoDB:**
-- `MONGODB_URI`: Get this from MongoDB Atlas (see Step 2)
-- `MONGODB_DB_NAME`: Use `healthnest` (or any name you prefer)
+**Neon Postgres:**
+- `DATABASE_URL`: Neon pooled connection string
+- `DIRECT_URL`: Neon direct connection string for migrations
 
-**NextAuth:**
-- `NEXTAUTH_URL`: Use `http://localhost:3001` for local development
-- `NEXTAUTH_SECRET`: Paste the secret you generated above
+**Neon Auth:**
+- `NEON_AUTH_BASE_URL`: Copy the Auth URL from Neon Console → Auth → Configuration
+- `NEON_AUTH_COOKIE_SECRET`: Paste the secret you generated above
 
 ### Optional (can skip for initial testing):
 
 **Cloudflare R2:**
-- Leave these empty for now - we'll set up file uploads later
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME`: Required for document uploads. Keep the bucket private; do not configure a public URL.
 
 **Groq AI:**
 - Leave empty for now - we'll set this up in Sprint 1
@@ -39,43 +39,22 @@ This guide will help you set up and test the foundation of HealthNest.
 **OCR Service:**
 - Leave empty for now - we'll set this up in Sprint 1
 
-**Google OAuth:**
-- Leave empty for now - email/password auth will work
+**Social SSO (Neon Console, not app env vars):**
+- Enable Google under Neon Console → Auth → Configuration
+- Add trusted domains for `http://localhost:3001` and your production URL
+- Register the Google redirect URI as `{NEON_AUTH_BASE_URL}/callback/google`
 
-## Step 2: MongoDB Atlas Setup
+## Step 2: Neon and R2 Setup
 
-1. **Create MongoDB Atlas Account** (if you don't have one):
-   - Go to https://www.mongodb.com/cloud/atlas
-   - Sign up for free (M0 cluster is free)
-
-2. **Create a Cluster:**
-   - Choose a cloud provider and region
-   - Select M0 (Free) tier
-   - Name your cluster (e.g., "HealthNest")
-
-3. **Create Database User:**
-   - Go to "Database Access" → "Add New Database User"
-   - Choose "Password" authentication
-   - Create username and password (save these!)
-   - Set privileges to "Atlas admin" or "Read and write to any database"
-
-4. **Configure Network Access:**
-   - Go to "Network Access" → "Add IP Address"
-   - Click "Allow Access from Anywhere" (0.0.0.0/0) for development
-   - Or add your current IP address
-
-5. **Get Connection String:**
-   - Go to "Database" → "Connect"
-   - Choose "Connect your application"
-   - Copy the connection string
-   - Replace `<password>` with your database user password
-   - Replace `<dbname>` with `healthnest` (or your chosen DB name)
-   - Example: `mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/healthnest?retryWrites=true&w=majority`
-   - Paste this into `.env.local` as `MONGODB_URI`
+1. Create a Neon project and enable Neon Auth on its production branch.
+2. Copy the pooled and direct Postgres connection strings into `.env.local`.
+3. Copy Neon Auth's Auth URL and add it as `NEON_AUTH_BASE_URL`.
+4. Create a Cloudflare R2 bucket and an S3 API token restricted to that bucket; add the four R2 variables to `.env.local`.
+5. For Google social login in production, confirm Google is enabled in Neon Auth and add your app origins as trusted domains.
 
 ## Step 3: Initialize Database
 
-Run the database initialization script to create indexes:
+Run the versioned database migrations:
 
 ```bash
 npm run init-db
@@ -83,15 +62,12 @@ npm run init-db
 
 **Expected output:**
 ```
-Initializing MongoDB indexes...
-MongoDB indexes initialized successfully
-Database initialization complete!
+Applied database/migrations/0001_initial.sql
 ```
 
 If you see errors:
-- Check your `MONGODB_URI` is correct
-- Verify your IP is whitelisted in MongoDB Atlas
-- Check your database user credentials
+- Check `DIRECT_URL` is a Neon direct connection string
+- Check the Neon project is reachable and the credentials are correct
 
 ## Step 4: Start Development Server
 
@@ -108,45 +84,27 @@ npm run dev
 
 Open http://localhost:3001 in your browser. You should see the default Next.js page.
 
-## Step 5: Test MongoDB Connection
+## Step 5: Test Authentication and Uploads
 
-Let's create a simple test endpoint to verify MongoDB is working.
+1. Open `http://localhost:3001/auth/signup` and create a test account.
+2. Create a patient, then upload a small PDF or image through a health record.
+3. Verify the object appears in R2 and its metadata is visible in Neon; the bucket object should not be publicly accessible.
 
-1. Create a test API route:
-   ```bash
-   # This will be created in the next step
-   ```
-
-2. Visit: http://localhost:3001/api/test/db
-
-You should see a JSON response indicating the connection status.
-
-## Step 6: Test Authentication Setup
-
-1. **Check NextAuth is configured:**
-   - Visit: http://localhost:3001/api/auth/signin
-   - You should see the NextAuth sign-in page (or redirect)
-
-2. **Test session endpoint:**
-   - Visit: http://localhost:3001/api/auth/session
-   - Should return `{"user":null}` (no user logged in)
-
-## Step 7: Verify Project Structure
+## Step 6: Verify Project Structure
 
 Check that all files are in place:
 
 ```bash
 # Check core files exist
-ls -la lib/mongodb.ts
 ls -la lib/r2.ts
-ls -la lib/auth/config.ts
-ls -la lib/db/init-indexes.ts
+ls -la lib/auth/session.ts
+ls -la lib/db/neon.ts
 
 # Check types exist
 ls -la lib/types/*.ts
 
 # Check API route exists
-ls -la app/api/auth/[...nextauth]/route.ts
+ls -la app/api/auth/[...path]/route.ts
 ```
 
 ## Troubleshooting
@@ -210,4 +168,3 @@ We can proceed to implement the API layer (Task #8) which will include:
 - [ ] http://localhost:3001/api/auth/session returns JSON
 
 Let me know if you encounter any issues or if everything works!
-

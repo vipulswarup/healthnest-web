@@ -1,179 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getDatabase } from '@/lib/mongodb';
 import { z } from 'zod';
-import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { ObjectId } from 'mongodb';
+import { sql } from '@/lib/db/neon';
+import { toPatient } from '@/lib/db/mappers';
+import { getCurrentUser } from '@/lib/auth/session';
+import { canAccessPatient, getAccessiblePatient } from '@/lib/households/access';
+import { AppError, handleError } from '@/lib/middleware/error-handler';
+import { recordAuditEvent } from '@/lib/services/audit.service';
 
-const updatePatientSchema = z.object({
-  firstName: z.string().min(1).optional(),
-  middleName: z.string().optional(),
-  lastName: z.string().optional(),
-  title: z.string().optional(),
-  suffix: z.string().optional(),
-  emails: z.array(z.string().email()).optional(),
-  dateOfBirth: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
-  gender: z.string().optional(),
-  abhaNumber: z.string().optional(),
-  bloodGroup: z.string().optional(),
-  emergencyContacts: z.array(z.object({
-    name: z.string().min(1, 'Emergency contact name is required'),
-    phone: z.string().min(1, 'Emergency contact phone is required'),
-    relation: z.string().min(1, 'Emergency contact relation is required'),
-  })).optional(),
-  preferences: z.record(z.string(), z.any()).optional(),
-  hospitalIdentifiers: z.array(z.object({
-    systemName: z.string(),
-    identifierType: z.string(),
-    value: z.string(),
-  })).optional(),
-  mobileNumbers: z.array(z.object({
-    countryCode: z.string(),
-    number: z.string(),
-  })).optional(),
+const idSchema = z.string().uuid();
+const updateSchema = z.object({
+  firstName: z.string().min(1).optional(), middleName: z.string().optional(), lastName: z.string().optional(), title: z.string().optional(), suffix: z.string().optional(),
+  emails: z.array(z.string().email()).optional(), dateOfBirth: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  gender: z.string().optional(), abhaNumber: z.string().optional(), bloodGroup: z.string().optional(),
+  emergencyContacts: z.array(z.object({ name: z.string().min(1), phone: z.string().min(1), relation: z.string().min(1) })).optional(),
+  preferences: z.record(z.string(), z.any()).optional(), hospitalIdentifiers: z.array(z.object({ systemName: z.string(), identifierType: z.string(), value: z.string() })).optional(),
+  mobileNumbers: z.array(z.object({ countryCode: z.string(), number: z.string() })).optional(),
 });
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid patient ID', 400);
-    }
-
-    const db = await getDatabase();
-    const patientsCollection = db.collection('patients');
-
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(id),
-      userId: session.user.id,
-    });
-
-    if (!patient) {
-      throw new AppError('Patient not found', 404);
-    }
-
-    return NextResponse.json({
-      ...patient,
-      id: patient._id.toString(),
-    });
-  } catch (error) {
-    return handleError(error);
-  }
+async function userAndId(params: Promise<{ id: string }>) {
+  const user = await getCurrentUser();
+  if (!user) throw new AppError('Unauthorized', 401);
+  const parsedId = idSchema.safeParse((await params).id);
+  if (!parsedId.success) throw new AppError('Invalid patient ID', 400);
+  return { user, id: parsedId.data };
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid patient ID', 400);
-    }
-
-    const body = await request.json();
-    const validationResult = updatePatientSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      throw new AppError(
-        validationResult.error.issues[0].message,
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-
-    const db = await getDatabase();
-    const patientsCollection = db.collection('patients');
-
-    // Verify patient belongs to user
-    const existingPatient = await patientsCollection.findOne({
-      _id: new ObjectId(id),
-      userId: session.user.id,
-    });
-
-    if (!existingPatient) {
-      throw new AppError('Patient not found', 404);
-    }
-
-    const updateData: any = {
-      ...validationResult.data,
-      updatedAt: new Date(),
-    };
-
-    // Parse dateOfBirth if provided
-    if (updateData.dateOfBirth) {
-      updateData.dateOfBirth = new Date(updateData.dateOfBirth);
-    }
-
-    const result = await patientsCollection.findOneAndUpdate(
-      { _id: new ObjectId(id), userId: session.user.id },
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
-
-    if (!result) {
-      throw new AppError('Patient not found', 404);
-    }
-
-    return NextResponse.json({
-      ...result,
-      id: result._id.toString(),
-    });
-  } catch (error) {
-    return handleError(error);
-  }
+    const { user, id } = await userAndId(params);
+    const patient = await getAccessiblePatient(user.id, id);
+    if (!patient) throw new AppError('Patient not found', 404);
+    return NextResponse.json(toPatient(patient));
+  } catch (error) { return handleError(error); }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const { user, id } = await userAndId(params);
+    if (!(await canAccessPatient(user.id, id))) throw new AppError('Patient not found', 404);
 
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const { id } = await params;
-
-    if (!ObjectId.isValid(id)) {
-      throw new AppError('Invalid patient ID', 400);
-    }
-
-    const db = await getDatabase();
-    const patientsCollection = db.collection('patients');
-
-    const result = await patientsCollection.findOneAndDelete({
-      _id: new ObjectId(id),
-      userId: session.user.id,
+    const parsed = updateSchema.safeParse(await request.json());
+    if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400, 'VALIDATION_ERROR');
+    const data = parsed.data;
+    const [patient] = await sql`
+      UPDATE patients SET
+        first_name = COALESCE(${data.firstName ?? null}, first_name), middle_name = COALESCE(${data.middleName ?? null}, middle_name),
+        last_name = COALESCE(${data.lastName ?? null}, last_name), title = COALESCE(${data.title ?? null}, title), suffix = COALESCE(${data.suffix ?? null}, suffix),
+        emails = COALESCE(${data.emails === undefined ? null : JSON.stringify(data.emails)}::jsonb, emails),
+        mobile_numbers = COALESCE(${data.mobileNumbers === undefined ? null : JSON.stringify(data.mobileNumbers)}::jsonb, mobile_numbers),
+        date_of_birth = COALESCE(${data.dateOfBirth ?? null}::date, date_of_birth), gender = COALESCE(${data.gender ?? null}, gender),
+        abha_number = COALESCE(${data.abhaNumber ?? null}, abha_number), blood_group = COALESCE(${data.bloodGroup ?? null}, blood_group),
+        emergency_contacts = COALESCE(${data.emergencyContacts === undefined ? null : JSON.stringify(data.emergencyContacts)}::jsonb, emergency_contacts),
+        preferences = COALESCE(${data.preferences === undefined ? null : JSON.stringify(data.preferences)}::jsonb, preferences),
+        hospital_identifiers = COALESCE(${data.hospitalIdentifiers === undefined ? null : JSON.stringify(data.hospitalIdentifiers)}::jsonb, hospital_identifiers),
+        updated_at = NOW()
+      WHERE id = ${id}::uuid RETURNING *
+    `;
+    if (!patient) throw new AppError('Patient not found', 404);
+    await recordAuditEvent({
+      actorId: user.id,
+      patientId: id,
+      eventType: 'updated',
+      entityType: 'patient',
+      entityId: id,
+      metadata: { changedFields: Object.keys(data) },
     });
+    return NextResponse.json(toPatient(patient));
+  } catch (error) { return handleError(error); }
+}
 
-    if (!result) {
-      throw new AppError('Patient not found', 404);
-    }
-
+export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { user, id } = await userAndId(params);
+    if (!(await canAccessPatient(user.id, id))) throw new AppError('Patient not found', 404);
+    const [patient] = await sql`DELETE FROM patients WHERE id = ${id}::uuid RETURNING id`;
+    if (!patient) throw new AppError('Patient not found', 404);
+    await recordAuditEvent({
+      actorId: user.id,
+      eventType: 'deleted',
+      entityType: 'patient',
+      entityId: id,
+    });
     return NextResponse.json({ message: 'Patient deleted successfully' });
-  } catch (error) {
-    return handleError(error);
-  }
+  } catch (error) { return handleError(error); }
 }
-

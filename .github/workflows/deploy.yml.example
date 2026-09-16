@@ -34,7 +34,7 @@ jobs:
         env:
           # Use dummy values for build - actual values set in deployment platform
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_DB_NAME: healthnest
+          MONGODB_DB_NAME: sanovault
           NEXTAUTH_URL: https://example.com
           NEXTAUTH_SECRET: dummy-secret-for-build
           R2_ACCOUNT_ID: dummy

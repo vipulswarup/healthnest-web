@@ -1,45 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getDatabase } from '@/lib/mongodb';
-import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { ObjectId } from 'mongodb';
+import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { sql } from '@/lib/db/neon';
+import { AppError, handleError } from '@/lib/middleware/error-handler';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
+    const user = await getCurrentUser();
+    if (!user) throw new AppError('Unauthorized', 401);
 
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
-    }
-
-    const db = await getDatabase();
-    const usersCollection = db.collection('users');
-
-    const result = await usersCollection.findOneAndUpdate(
-      { _id: new ObjectId(session.user.id) },
-      {
-        $set: {
-          onboardingCompleted: true,
-          updatedAt: new Date(),
-        },
-      },
-      { returnDocument: 'after' }
-    );
-
-    if (!result) {
-      throw new AppError('User not found', 404);
-    }
-
-    // Remove sensitive data
-    const { password, ...userWithoutPassword } = result;
+    const [profile] = await sql`
+      UPDATE profiles
+      SET onboarding_completed = TRUE, updated_at = NOW()
+      WHERE user_id = ${user.id}
+      RETURNING *
+    `;
+    if (!profile) throw new AppError('User not found', 404);
 
     return NextResponse.json({
-      ...userWithoutPassword,
-      id: result._id.toString(),
+      id: String(profile.user_id),
+      email: profile.email || null,
+      firstName: profile.first_name,
+      lastName: profile.last_name || null,
+      preferences: profile.preferences || {},
+      onboardingCompleted: Boolean(profile.onboarding_completed),
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
     });
   } catch (error) {
     return handleError(error);
   }
 }
-

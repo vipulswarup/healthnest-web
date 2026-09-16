@@ -5,12 +5,17 @@ import { useRouter } from 'next/navigation';
 import { DocumentMetadata } from '@/lib/types/document.types';
 import { OCRProgress } from '@/components/documents/OCRProgress';
 import { AISuggestions } from '@/components/documents/AISuggestions';
+import AppNav from '@/components/layout/AppNav';
+import { useToast } from '@/components/ui/ToastProvider';
+import Image from 'next/image';
 
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
     const { id } = use(params);
+    const toast = useToast();
 
     const [document, setDocument] = useState<DocumentMetadata | null>(null);
+    const [signedUrl, setSignedUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -26,10 +31,15 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             if (!res.ok) throw new Error('Failed to load document');
             const data = await res.json();
             setDocument(data);
+            const view = await fetch('/api/documents/view', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentId: id }),
+            });
+            if (!view.ok) throw new Error('Failed to load document preview');
+            setSignedUrl((await view.json()).url);
             if (data.ocrStatus) setOcrStatus(data.ocrStatus);
             if (data.aiStatus) setAiStatus(data.aiStatus);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load document');
         } finally {
             setLoading(false);
         }
@@ -39,24 +49,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         fetchDocument();
     }, [fetchDocument]);
 
-    // Trigger OCR if not done
-    useEffect(() => {
-        if (document && !document.ocrText && ocrStatus === 'PENDING') {
-            runOCR();
-        }
-    }, [document, ocrStatus]);
-
-    // Trigger AI if OCR done but AI not
-    useEffect(() => {
-        if (document && document.ocrText && !document.classification && aiStatus === 'PENDING') {
-            runAIAnalysis();
-        } else if (document && document.ocrText && document.ocrStatus === 'COMPLETED' && aiStatus === 'PENDING') {
-            // If we just finished OCR but AI hasn't run (and no classification exists)
-            runAIAnalysis();
-        }
-    }, [document, aiStatus, ocrStatus]);
-
-    const runOCR = async () => {
+    const runOCR = useCallback(async () => {
         setOcrStatus('PROCESSING');
         try {
             const res = await fetch('/api/ocr/process', {
@@ -72,9 +65,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             console.error(err);
             setOcrStatus('FAILED');
         }
-    };
+    }, [fetchDocument, id]);
 
-    const runAIAnalysis = async () => {
+    const runAIAnalysis = useCallback(async () => {
         setAiStatus('PROCESSING');
         try {
             // 1. Classification
@@ -99,7 +92,21 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             console.error(err);
             setAiStatus('FAILED');
         }
-    };
+    }, [fetchDocument, id]);
+
+    // Trigger OCR if not done
+    useEffect(() => {
+        if (document && !document.ocrText && ocrStatus === 'PENDING') {
+            void runOCR();
+        }
+    }, [document, ocrStatus, runOCR]);
+
+    // Trigger AI if OCR done but AI not
+    useEffect(() => {
+        if (document?.ocrText && !document.classification && aiStatus === 'PENDING') {
+            void runAIAnalysis();
+        }
+    }, [document, aiStatus, runAIAnalysis]);
 
     const handleApprove = async (classification: string, tags: string[]) => {
         setIsSaving(true);
@@ -110,7 +117,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         // Simulate API call to save approval
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        alert(`Document approved as ${classification} with ${tags.length} tags!`);
+        toast.notify(`Document approved as ${classification} with ${tags.length} tags.`, 'success');
         router.push('/dashboard'); // Or back to list
         setIsSaving(false);
     };
@@ -122,7 +129,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     if (!document) return null;
 
     return (
-        <div className={`min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}>
+        <div className="min-h-screen bg-gray-50">
+            <AppNav />
+            <main className={`px-4 py-8 sm:px-6 lg:px-8 ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}>
                 <div className="max-w-5xl mx-auto">
                     <div className="md:flex md:gap-6">
 
@@ -132,12 +141,15 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                             <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200 aspect-[3/4] relative">
                                 {/* Use iframe for PDF, img for others. Simplifying to img for this demo if it's image */}
                                 {document.fileType === 'application/pdf' ? (
-                                    <iframe src={document.fileUrl} className="w-full h-full" />
+                                    <iframe src={signedUrl || undefined} className="w-full h-full" title={document.fileName} />
                                 ) : (
-                                    <img
-                                        src={document.fileUrl}
+                                    <Image
+                                        src={signedUrl || ''}
                                         alt="Document"
-                                        className="w-full h-full object-contain bg-gray-900"
+                                        fill
+                                        unoptimized
+                                        sizes="(min-width: 768px) 50vw, 100vw"
+                                        className="object-contain bg-gray-900"
                                     />
                                 )}
                             </div>
@@ -158,7 +170,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
                             {(ocrStatus === 'COMPLETED' || document.ocrText) && (
                                 <AISuggestions
-                                    documentId={id}
                                     initialClassification={document.classification}
                                     initialTags={document.suggestedTags || []}
                                     autoSelectedTags={document.approvedTags || []}
@@ -171,6 +182,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
                     </div>
                 </div>
-            </div>
+            </main>
+        </div>
     );
 }

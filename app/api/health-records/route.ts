@@ -1,296 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getDatabase } from '@/lib/mongodb';
 import { z } from 'zod';
-import { handleError, AppError } from '@/lib/middleware/error-handler';
-import { ObjectId } from 'mongodb';
-import { getDocumentById } from '@/lib/services/document.service';
-import { findDoctorByName, createDoctor } from '@/lib/services/doctor.service';
+import { getCurrentUser } from '@/lib/auth/session';
+import { sql } from '@/lib/db/neon';
+import { toHealthRecord } from '@/lib/db/records';
+import {
+  canAccessPatient,
+  getAccessibleDocument,
+  requireActiveHouseholdId,
+} from '@/lib/households/access';
+import { AppError, handleError } from '@/lib/middleware/error-handler';
+import { recordAuditEvent } from '@/lib/services/audit.service';
 
-const createHealthRecordSchema = z.object({
-  patientId: z.string().min(1, 'Patient ID is required'),
-  recordType: z.string().min(1, 'Record type is required'),
-  data: z.record(z.string(), z.any()),
-  tags: z.array(z.string()).optional(),
-  source: z.string().min(1, 'Source is required'),
-  doctorName: z.string().optional(),
-  documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
-  documentPath: z.string().optional(),
-  ocrText: z.string().optional(),
-  documentId: z.string().optional(),
-  hospitalSystemName: z.string().optional(),
-  hospitalIdentifierType: z.string().optional(),
-  hospitalIdentifierValue: z.string().optional(),
+const recordSchema = z.object({
+  patientId: z.string().uuid(), recordType: z.string().min(1), data: z.record(z.string(), z.any()), tags: z.array(z.string()).optional(),
+  source: z.string().optional(), doctorName: z.string().optional(), documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  documentId: z.string().uuid().optional(), ocrText: z.string().optional(), hospitalSystemName: z.string().optional(),
+  hospitalIdentifierType: z.string().optional(), hospitalIdentifierValue: z.string().optional(),
 });
+
+async function currentUser() { const user = await getCurrentUser(); if (!user) throw new AppError('Unauthorized', 401); return user; }
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
+    const user = await currentUser();
+    let activeHouseholdId: string;
+    try {
+      activeHouseholdId = await requireActiveHouseholdId(user.id);
+    } catch {
+      throw new AppError('Create or join a household before viewing records', 400, 'NO_HOUSEHOLD');
     }
 
-    const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get('patientId');
-    const keyword = searchParams.get('keyword') || '';
-    const source = searchParams.get('source') || '';
-    const recordType = searchParams.get('recordType') || '';
-    const tag = searchParams.get('tag') || '';
-    const startDate = searchParams.get('startDate') || '';
-    const endDate = searchParams.get('endDate') || '';
+    const params = request.nextUrl.searchParams;
+    const patientId = params.get('patientId') || null;
+    if (patientId && !z.string().uuid().safeParse(patientId).success) throw new AppError('Invalid patient ID', 400);
+    const keyword = params.get('keyword')?.trim() || null;
+    const source = params.get('source')?.trim() || null;
+    const recordType = params.get('recordType')?.trim() || null;
+    const tag = params.get('tag')?.trim() || null;
+    const startDate = params.get('startDate') || null;
+    const endDate = params.get('endDate') || null;
 
-    const db = await getDatabase();
-    const patientsCollection = db.collection('patients');
-    const healthRecordsCollection = db.collection('health_records');
+    const records = await sql`
+      SELECT hr.* FROM health_records hr
+      JOIN patients p ON p.id = hr.patient_id
+      INNER JOIN household_patients hp ON hp.patient_id = p.id
+      WHERE hp.household_id = ${activeHouseholdId}::uuid
+        AND EXISTS (
+          SELECT 1 FROM household_members hm
+          WHERE hm.household_id = hp.household_id AND hm.user_id = ${user.id}
+        )
+        AND (${patientId}::uuid IS NULL OR hr.patient_id = ${patientId}::uuid)
+        AND (${source}::text IS NULL OR hr.source ILIKE '%' || ${source} || '%')
+        AND (${recordType}::text IS NULL OR hr.record_type = ${recordType})
+        AND (${tag}::text IS NULL OR ${tag} = ANY(hr.tags))
+        AND (${startDate}::date IS NULL OR hr.created_at >= ${startDate}::date)
+        AND (${endDate}::date IS NULL OR hr.created_at < (${endDate}::date + INTERVAL '1 day'))
+        AND (${keyword}::text IS NULL OR CONCAT_WS(' ', hr.source, hr.doctor_name, hr.record_type, hr.ocr_text, hr.data::text) ILIKE '%' || ${keyword} || '%' OR EXISTS (SELECT 1 FROM unnest(hr.tags) AS record_tag WHERE record_tag ILIKE '%' || ${keyword} || '%'))
+      ORDER BY hr.created_at DESC
+    `;
 
-    // Build query
-    const query: any = {};
-
-    // If patientId is provided, verify it belongs to user and filter by it
-    if (patientId) {
-      if (!ObjectId.isValid(patientId)) {
-        throw new AppError('Invalid patient ID', 400);
-      }
-      const patient = await patientsCollection.findOne({
-        _id: new ObjectId(patientId),
-        userId: session.user.id,
-      });
-
-      if (!patient) {
-        throw new AppError('Patient not found', 404);
-      }
-      query.patientId = patientId;
-    } else {
-      // If no patientId, get all patient IDs for this user
-      const userPatients = await patientsCollection
-        .find({ userId: session.user.id })
-        .project({ _id: 1 })
-        .toArray();
-      
-      if (userPatients.length === 0) {
-        return NextResponse.json([]);
-      }
-      
-      query.patientId = { $in: userPatients.map(p => p._id.toString()) };
-    }
-
-    // Filter by source
-    if (source) {
-      query.source = { $regex: source, $options: 'i' };
-    }
-
-    // Filter by recordType
-    if (recordType) {
-      query.recordType = recordType;
-    }
-
-    // Filter by tag
-    if (tag) {
-      query.tags = { $in: [tag] };
-    }
-
-    // Filter by date range
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) {
-        query.createdAt.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999); // Include entire end date
-        query.createdAt.$lte = end;
-      }
-    }
-
-    // Full-text keyword search using MongoDB text index
-    if (keyword) {
-      // Use MongoDB $text search if text index exists, otherwise fallback to regex
-      try {
-        query.$text = { $search: keyword };
-        // Text search returns results sorted by relevance score
-        const records = await healthRecordsCollection
-          .find(query)
-          .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
-          .toArray();
-        
-        return NextResponse.json(
-          records.map((record) => ({
-            ...record,
-            id: record._id.toString(),
-          }))
-        );
-      } catch (textSearchError) {
-        // Fallback to regex search if text index doesn't exist or fails
-        console.warn('Text index search failed, using regex fallback:', textSearchError);
-        const keywordRegex = { $regex: keyword, $options: 'i' };
-        query.$or = [
-          { source: keywordRegex },
-          { doctorName: keywordRegex },
-          { tags: { $in: [new RegExp(keyword, 'i')] } },
-          { recordType: keywordRegex },
-          { ocrText: keywordRegex },
-        ];
-      }
-    }
-
-    const records = await healthRecordsCollection
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    // If keyword search with regex fallback, also filter records by searching in data object
-    let filteredRecords = records;
-    if (keyword && !query.$text) {
-      const keywordLower = keyword.toLowerCase();
-      filteredRecords = records.filter(record => {
-        // Search in source
-        if (record.source?.toLowerCase().includes(keywordLower)) return true;
-        
-        // Search in tags
-        if (record.tags?.some((t: string) => t.toLowerCase().includes(keywordLower))) return true;
-        
-        // Search in recordType
-        if (record.recordType?.toLowerCase().includes(keywordLower)) return true;
-        
-        // Search in OCR text
-        if (record.ocrText?.toLowerCase().includes(keywordLower)) return true;
-        
-        // Search in data object (stringified)
-        if (record.data) {
-          const dataString = JSON.stringify(record.data).toLowerCase();
-          if (dataString.includes(keywordLower)) return true;
-        }
-        
-        return false;
-      });
-    }
-
-    return NextResponse.json(
-      filteredRecords.map((record) => ({
-        ...record,
-        id: record._id.toString(),
-      }))
-    );
-  } catch (error) {
-    return handleError(error);
-  }
+    return NextResponse.json(records.map(toHealthRecord));
+  } catch (error) { return handleError(error); }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      throw new AppError('Unauthorized', 401);
+    const user = await currentUser();
+    const parsed = recordSchema.safeParse(await request.json());
+    if (!parsed.success) throw new AppError(parsed.error.issues[0].message, 400, 'VALIDATION_ERROR');
+    const data = parsed.data;
+    if (!(await canAccessPatient(user.id, data.patientId))) throw new AppError('Patient not found', 404);
+    let ocrText = data.ocrText || null;
+    if (data.documentId) {
+      const document = await getAccessibleDocument(user.id, data.documentId);
+      if (!document) throw new AppError('Document not found', 404);
+      if (!ocrText && typeof document.ocr_text === 'string') ocrText = document.ocr_text;
     }
-
-    const body = await request.json();
-    const validationResult = createHealthRecordSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      throw new AppError(
-        validationResult.error.issues[0].message,
-        400,
-        'VALIDATION_ERROR'
-      );
-    }
-
-    const data = validationResult.data;
-
-    const db = await getDatabase();
-    const patientsCollection = db.collection('patients');
-    const healthRecordsCollection = db.collection('health_records');
-
-    // Verify patient belongs to user
-    if (!ObjectId.isValid(data.patientId)) {
-      throw new AppError('Invalid patient ID', 400);
-    }
-
-    const patient = await patientsCollection.findOne({
-      _id: new ObjectId(data.patientId),
-      userId: session.user.id,
-    });
-
-    if (!patient) {
-      throw new AppError('Patient not found', 404);
-    }
-
-    // Fetch OCR text from document if documentId is provided
-    let ocrText = data.ocrText || '';
-    if (data.documentId && !ocrText) {
-      try {
-        const document = await getDocumentById(data.documentId);
-        if (document && document.userId === session.user.id && document.ocrText) {
-          ocrText = document.ocrText;
-        }
-      } catch (err) {
-        console.warn('Failed to fetch OCR text from document:', err);
-      }
-    }
-
-    // Normalize and save doctor name
-    let finalDoctorName = data.doctorName || '';
-    if (finalDoctorName.trim()) {
-      try {
-        const matchedDoctor = await findDoctorByName(finalDoctorName);
-        if (matchedDoctor) {
-          finalDoctorName = matchedDoctor.preferredName;
-        } else {
-          // Create new doctor entry
-          const newDoctor = await createDoctor(finalDoctorName);
-          finalDoctorName = newDoctor.preferredName;
-        }
-      } catch (err) {
-        console.warn('Failed to normalize doctor name:', err);
-        // Continue with original name if normalization fails
-      }
-    }
-
-    // Parse document date if provided
-    let documentDate: Date | undefined;
-    if (data.documentDate) {
-      try {
-        documentDate = new Date(data.documentDate);
-        // Validate date
-        if (isNaN(documentDate.getTime())) {
-          documentDate = undefined;
-        }
-      } catch (err) {
-        console.warn('Invalid document date provided:', err);
-      }
-    }
-
-    const newRecord = {
+    const [record] = await sql`
+      INSERT INTO health_records (patient_id, record_type, data, tags, source, doctor_name, document_date, document_id, ocr_text, hospital_system_name, hospital_identifier_type, hospital_identifier_value)
+      VALUES (${data.patientId}::uuid, ${data.recordType}, ${JSON.stringify(data.data)}::jsonb, ${data.tags || []}, ${data.source?.trim() || 'Not specified'}, ${data.doctorName || null}, ${data.documentDate || null}::date, ${data.documentId || null}::uuid, ${ocrText}, ${data.hospitalSystemName || null}, ${data.hospitalIdentifierType || null}, ${data.hospitalIdentifierValue || null})
+      RETURNING *
+    `;
+    await recordAuditEvent({
+      actorId: user.id,
       patientId: data.patientId,
-      recordType: data.recordType,
-      data: data.data,
-      tags: data.tags || [],
-      source: data.source,
-      doctorName: finalDoctorName,
-      documentDate: documentDate,
-      documentPath: data.documentPath || '',
-      ocrText: ocrText,
-      hospitalSystemName: data.hospitalSystemName || '',
-      hospitalIdentifierType: data.hospitalIdentifierType || '',
-      hospitalIdentifierValue: data.hospitalIdentifierValue || '',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const result = await healthRecordsCollection.insertOne(newRecord);
-
-    return NextResponse.json(
-      {
-        ...newRecord,
-        id: result.insertedId.toString(),
-        _id: result.insertedId,
-      },
-      { status: 201 }
-    );
-  } catch (error) {
-    return handleError(error);
-  }
+      eventType: 'created',
+      entityType: 'health_record',
+      entityId: record.id,
+    });
+    const { notifyPatientHousehold } = await import('@/lib/services/device-push.service');
+    await notifyPatientHousehold(data.patientId, {
+      title: 'New report in SanoVault',
+      body: 'A family member filed a report. Open the app to check it.',
+      data: { patientId: data.patientId, recordId: String(record.id) },
+    }, user.id).catch(() => undefined);
+    return NextResponse.json(toHealthRecord(record), { status: 201 });
+  } catch (error) { return handleError(error); }
 }
-

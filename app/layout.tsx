@@ -1,21 +1,50 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "./providers";
+import BetaAcknowledgementGate from '@/components/auth/BetaAcknowledgementGate';
+import {
+  CANONICAL_SITE_URL,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+} from '@/lib/site';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#EF8354",
+};
 
 export const metadata: Metadata = {
-  title: "HealthNest - Your Health Record Management",
-  description: "Manage your health records, medications, and family health information",
+  metadataBase: new URL(CANONICAL_SITE_URL),
+  title: {
+    default: SITE_TITLE,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  category: "health",
+  authors: [{ name: SITE_NAME, url: CANONICAL_SITE_URL }],
+  openGraph: {
+    type: "website",
+    locale: "en_IN",
+    url: CANONICAL_SITE_URL,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: "default",
+  },
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -24,6 +53,9 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
     shortcut: "/favicon.ico",
   },
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
 };
 
 export default function RootLayout({
@@ -33,10 +65,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers>{children}</Providers>
+      <body className="antialiased">
+        <Providers>
+          <BetaAcknowledgementGate />
+          {children}
+        </Providers>
       </body>
     </html>
   );
