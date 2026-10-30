@@ -13,7 +13,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#EF8354",
+  themeColor: "#1E76F7",
 };
 
 export const metadata: Metadata = {
@@ -64,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en-IN">
       <body className="antialiased">
         <Providers>
           <BetaAcknowledgementGate />

@@ -16,13 +16,13 @@ export function formatNoteDate(value: string) {
   );
 }
 
-export function visitNoteLine(note: Pick<VisitNote, 'noteDate' | 'observed' | 'askDoctor' | 'pinned'>) {
+export function visitNoteLine(note: Pick<VisitNote, 'noteDate' | 'observed' | 'askDoctor'>) {
   const parts: string[] = [];
   const when = formatNoteDate(note.noteDate);
   if (note.observed.trim()) parts.push(`Noticed: ${note.observed.trim()}`);
   if (note.askDoctor.trim()) parts.push(`Ask: ${note.askDoctor.trim()}`);
-  if (parts.length === 0) return `${when}${note.pinned ? ' (pinned)' : ''}`;
-  return `${when}${note.pinned ? ' · pinned' : ''} — ${parts.join(' · ')}`;
+  if (parts.length === 0) return when;
+  return `${when} — ${parts.join(' · ')}`;
 }
 
 export function visitNotesForPacket(options: {
@@ -33,7 +33,6 @@ export function visitNotesForPacket(options: {
 }) {
   const limit = options.limit ?? 8;
   const sorted = [...options.notes].sort((a, b) => {
-    if (a.pinned !== b.pinned) return Number(b.pinned) - Number(a.pinned);
     return b.noteDate.localeCompare(a.noteDate) || b.createdAt.localeCompare(a.createdAt);
   });
   const lines: string[] = [];

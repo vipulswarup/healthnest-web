@@ -66,6 +66,7 @@ export default function HouseholdDetailPage() {
   const id = String(params.id || '');
 
   const [name, setName] = useState('');
+  const [createdBy, setCreatedBy] = useState('');
   const [editName, setEditName] = useState('');
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -99,6 +100,7 @@ export default function HouseholdDetailPage() {
       if (!hRes.ok) throw new Error('Household not found');
       const household = await hRes.json();
       setName(household.name);
+      setCreatedBy(household.createdBy);
       setEditName(household.name);
       if (mRes.ok) setMembers(await mRes.json());
       if (iRes.ok) setInvites(await iRes.json());
@@ -361,9 +363,9 @@ export default function HouseholdDetailPage() {
   const confirmationCopy = (() => {
     if (!pendingAction) return { title: '', description: '', label: 'Confirm', tone: 'danger' as const };
     if (pendingAction.kind === 'unlink-patient') return {
-      title: `Unlink ${pendingAction.label}?`,
-      description: 'This removes access through this household. The patient must remain linked to at least one other household.',
-      label: 'Unlink patient', tone: 'danger' as const,
+      title: `Remove ${pendingAction.label} from this family?`,
+      description: 'This family loses access. If no other family has this patient, their profile, reports and tracking records are permanently deleted. Records shared with another family remain there. This does not delete a login account.',
+      label: 'Remove patient', tone: 'danger' as const,
     };
     if (pendingAction.kind === 'remove-member') return {
       title: `Remove ${pendingAction.label}?`,
@@ -386,9 +388,9 @@ export default function HouseholdDetailPage() {
       label: 'Leave household', tone: 'warning' as const,
     };
     return {
-      title: 'Dissolve this household?',
-      description: 'This removes the household for everyone. Patients that exist only here must be linked elsewhere first.',
-      label: 'Dissolve household', tone: 'danger' as const,
+      title: 'Delete this family?',
+      description: 'This permanently deletes the family for everyone, including invitations and WhatsApp links. Patients and records belonging only to this family are deleted. Patients linked to another family remain there. Login accounts are not deleted.',
+      label: 'Delete family', tone: 'danger' as const,
     };
   })();
 
@@ -447,7 +449,7 @@ export default function HouseholdDetailPage() {
                           onClick={() => setPendingAction({ kind: 'unlink-patient', id: p.id, label: [p.firstName, p.lastName].filter(Boolean).join(' ') })}
                           className="text-sm text-red-600 hover:underline disabled:opacity-50"
                         >
-                          Unlink
+                          Remove
                         </button>
                       </li>
                     ))}
@@ -490,7 +492,7 @@ export default function HouseholdDetailPage() {
                           onClick={() => setPendingAction({ kind: 'unlink-whatsapp', id: map.phone, label: map.phone })}
                           className="text-sm text-red-600 hover:underline disabled:opacity-50"
                         >
-                          Unlink
+                          Remove
                         </button>
                       </li>
                     ))}
@@ -590,8 +592,8 @@ export default function HouseholdDetailPage() {
                 <button type="button" disabled={busy} onClick={() => setPendingAction({ kind: 'leave' })} className="text-sm font-medium text-amber-800 hover:underline disabled:opacity-50">
                   Leave household
                 </button>
-                <button type="button" disabled={busy} onClick={() => setPendingAction({ kind: 'dissolve' })} className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50">
-                  Dissolve household
+                <button type="button" hidden={createdBy !== currentUserId} disabled={busy} onClick={() => setPendingAction({ kind: 'dissolve' })} className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50">
+                  Delete family
                 </button>
               </div>
             </>

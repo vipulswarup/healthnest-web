@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getDocumentById, updateDocumentStatus, updateDocumentStorage } from '@/lib/services/document.service';
-import { extractTextFromImage, OcrMode, pdfLacksTextLayer } from '@/lib/services/ocr.service';
+import { extractDocumentText } from '@/lib/services/document-text.service';
+import { OcrMode, pdfLacksTextLayer } from '@/lib/services/ocr.service';
 import { getR2Object, uploadToR2 } from '@/lib/r2';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 import { enforceHourlyRateLimit } from '@/lib/security/rate-limit';
+import { sql } from '@/lib/db/neon';
+import { isOfficeMime } from '@/lib/services/office-text.service';
+import { requireGroqAiConsent } from '@/lib/legal/groq-consent';
 
 export const runtime = 'nodejs';
 /** Full multi-page OCR can exceed 60s on long scanned labs. */
@@ -34,14 +38,34 @@ export async function POST(request: NextRequest) {
         if (document.userId !== user.id) {
             throw new AppError('Forbidden', 403);
         }
+        await requireGroqAiConsent(user.id);
 
         await updateDocumentStatus(documentId, { ocrStatus: 'PROCESSING' });
 
         try {
             if (!document.r2Key) throw new AppError('Document storage key is missing', 409);
-            const text = await extractTextFromImage(document.r2Key, true, { mode });
+            const [linked] = await sql`
+              SELECT COALESCE(d.patient_id, hr.patient_id) AS patient_id
+              FROM documents d
+              LEFT JOIN health_records hr ON hr.document_id = d.id
+              WHERE d.id = ${documentId}::uuid
+              LIMIT 1
+            `;
+            const patientId = linked?.patient_id ? String(linked.patient_id) : undefined;
+            const extraPasswords = Array.isArray(body.extraPasswords)
+              ? body.extraPasswords.map((value: unknown) => String(value || '').trim()).filter(Boolean).slice(0, 24)
+              : [];
+            const text = await extractDocumentText({
+              r2Key: document.r2Key,
+              fileType: document.fileType,
+              fileName: document.fileName,
+              patientId,
+              extraPasswords,
+              actorUserId: user.id,
+              mode,
+            });
 
-            if (document.fileType === 'application/pdf' && text) {
+            if (document.fileType === 'application/pdf' && text && !isOfficeMime(document.fileType)) {
                 try {
                     const stored = await getR2Object(document.r2Key);
                     if (stored) {

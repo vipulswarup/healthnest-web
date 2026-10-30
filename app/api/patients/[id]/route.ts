@@ -5,6 +5,9 @@ import { toPatient } from '@/lib/db/mappers';
 import { getCurrentUser } from '@/lib/auth/session';
 import { canAccessPatient, getAccessiblePatient } from '@/lib/households/access';
 import { AppError, handleError } from '@/lib/middleware/error-handler';
+import { removeFamilyPatient, processDeletionJobs } from '@/lib/services/deletion.service';
+import { getActiveHouseholdId } from '@/lib/households/access';
+import { after } from 'next/server';
 import { recordAuditEvent } from '@/lib/services/audit.service';
 
 const idSchema = z.string().uuid();
@@ -72,15 +75,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user, id } = await userAndId(params);
-    if (!(await canAccessPatient(user.id, id))) throw new AppError('Patient not found', 404);
-    const [patient] = await sql`DELETE FROM patients WHERE id = ${id}::uuid RETURNING id`;
-    if (!patient) throw new AppError('Patient not found', 404);
-    await recordAuditEvent({
-      actorId: user.id,
-      eventType: 'deleted',
-      entityType: 'patient',
-      entityId: id,
-    });
-    return NextResponse.json({ message: 'Patient deleted successfully' });
+    const family = await getActiveHouseholdId(user.id);
+    if (!family) throw new AppError('No active family', 404);
+    await removeFamilyPatient(user.id, family, id);
+    after(() => processDeletionJobs().then(() => undefined));
+    return NextResponse.json({ message: 'Patient removed from this family' });
   } catch (error) { return handleError(error); }
 }

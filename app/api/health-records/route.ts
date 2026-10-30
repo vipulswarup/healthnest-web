@@ -10,12 +10,14 @@ import {
 } from '@/lib/households/access';
 import { AppError, handleError } from '@/lib/middleware/error-handler';
 import { recordAuditEvent } from '@/lib/services/audit.service';
+import { attachDocumentToPatient } from '@/lib/services/document.service';
 
 const recordSchema = z.object({
   patientId: z.string().uuid(), recordType: z.string().min(1), data: z.record(z.string(), z.any()), tags: z.array(z.string()).optional(),
   source: z.string().optional(), doctorName: z.string().optional(), documentDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
   documentId: z.string().uuid().optional(), ocrText: z.string().optional(), hospitalSystemName: z.string().optional(),
   hospitalIdentifierType: z.string().optional(), hospitalIdentifierValue: z.string().optional(),
+  processAsync: z.boolean().optional(),
 });
 
 async function currentUser() { const user = await getCurrentUser(); if (!user) throw new AppError('Unauthorized', 401); return user; }
@@ -53,10 +55,10 @@ export async function GET(request: NextRequest) {
         AND (${source}::text IS NULL OR hr.source ILIKE '%' || ${source} || '%')
         AND (${recordType}::text IS NULL OR hr.record_type = ${recordType})
         AND (${tag}::text IS NULL OR ${tag} = ANY(hr.tags))
-        AND (${startDate}::date IS NULL OR hr.created_at >= ${startDate}::date)
-        AND (${endDate}::date IS NULL OR hr.created_at < (${endDate}::date + INTERVAL '1 day'))
+        AND (${startDate}::date IS NULL OR COALESCE(hr.document_date, hr.created_at::date) >= ${startDate}::date)
+        AND (${endDate}::date IS NULL OR COALESCE(hr.document_date, hr.created_at::date) <= ${endDate}::date)
         AND (${keyword}::text IS NULL OR CONCAT_WS(' ', hr.source, hr.doctor_name, hr.record_type, hr.ocr_text, hr.data::text) ILIKE '%' || ${keyword} || '%' OR EXISTS (SELECT 1 FROM unnest(hr.tags) AS record_tag WHERE record_tag ILIKE '%' || ${keyword} || '%'))
-      ORDER BY hr.created_at DESC
+      ORDER BY COALESCE(hr.document_date, hr.created_at::date) DESC, hr.created_at DESC
     `;
 
     return NextResponse.json(records.map(toHealthRecord));
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
       const document = await getAccessibleDocument(user.id, data.documentId);
       if (!document) throw new AppError('Document not found', 404);
       if (!ocrText && typeof document.ocr_text === 'string') ocrText = document.ocr_text;
+      await attachDocumentToPatient(data.documentId, data.patientId);
     }
     const [record] = await sql`
       INSERT INTO health_records (patient_id, record_type, data, tags, source, doctor_name, document_date, document_id, ocr_text, hospital_system_name, hospital_identifier_type, hospital_identifier_value)
@@ -94,6 +97,18 @@ export async function POST(request: NextRequest) {
       body: 'A family member filed a report. Open the app to check it.',
       data: { patientId: data.patientId, recordId: String(record.id) },
     }, user.id).catch(() => undefined);
+    if (data.processAsync && data.documentId && !data.ocrText) {
+      const { scheduleHealthRecordProcessing } = await import('@/lib/services/document-ingest.service');
+      scheduleHealthRecordProcessing({
+        healthRecordId: String(record.id),
+        documentId: data.documentId,
+        sourceFallback: data.source?.trim() || 'Share',
+        keepTags: data.tags || ['needs_review'],
+      });
+    } else if (data.documentId) {
+      const { syncDocumentFileName } = await import('@/lib/services/document.service');
+      await syncDocumentFileName(data.documentId).catch(() => undefined);
+    }
     return NextResponse.json(toHealthRecord(record), { status: 201 });
   } catch (error) { return handleError(error); }
 }

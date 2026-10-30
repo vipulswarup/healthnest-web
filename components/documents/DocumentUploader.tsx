@@ -4,8 +4,7 @@ import { useId, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { MultiPageScanner } from '@/components/documents/MultiPageScanner';
 
-const ACCEPTED = '.pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.heic,.heif,.avif,.gif,.bmp';
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+import { ACCEPTED_HEALTH_FILES, assertAllowedHealthFile } from '@/lib/documents/allowed-files';
 
 interface DocumentUploaderProps {
   onUploadSuccess?: (document: { id: string; fileName: string }) => void;
@@ -30,30 +29,8 @@ export function DocumentUploader({
   const router = useRouter();
 
   const validateFiles = (files: File[]) => {
-    const allowed = new Set([
-      'application/pdf',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp',
-      'image/tif',
-      'image/tiff',
-      'image/heic',
-      'image/heif',
-      'image/heic-sequence',
-      'image/heif-sequence',
-      'image/avif',
-      'image/gif',
-      'image/bmp',
-      'image/x-ms-bmp',
-    ]);
     for (const file of files) {
-      if (!allowed.has(file.type.toLowerCase()) && !/\.(pdf|jpe?g|png|webp|tiff?|heic|heif|avif|gif|bmp)$/i.test(file.name)) {
-        throw new Error(`Unsupported file type: ${file.name}`);
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error(`${file.name} exceeds the 50MB limit`);
-      }
+      assertAllowedHealthFile(file);
     }
   };
 
@@ -133,7 +110,7 @@ export function DocumentUploader({
         type="file"
         ref={fileInputRef}
         className="sr-only"
-        accept={ACCEPTED}
+        accept={ACCEPTED_HEALTH_FILES}
         multiple={multiple}
         onChange={(e) => takeFiles(e.target.files)}
         disabled={blocked}
@@ -165,7 +142,7 @@ export function DocumentUploader({
             </button>
           </div>
           <p className="text-center text-sm text-gray-600">
-            Scan a paper report, or pick a file saved from WhatsApp.
+            Scan a paper report, or pick a PDF, photo, or Office file.
           </p>
 
           <div
@@ -192,7 +169,7 @@ export function DocumentUploader({
                 : 'On a computer, you can also drop a file here'}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              PDF or photo, up to 50MB each
+              PDF, photo, or Microsoft Office file, up to 50MB each
             </p>
           </div>
         </div>

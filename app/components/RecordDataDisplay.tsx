@@ -7,7 +7,7 @@ interface RecordDataDisplayProps {
   data: Record<string, unknown>;
 }
 
-const LAB_METADATA_KEYS = new Set(['labResults', 'labResultsManual', 'labResultsEditedAt']);
+const LAB_METADATA_KEYS = new Set(['labResults', 'labResultsManual', 'labResultsEditedAt', 'practitionerSummary']);
 const ID_METADATA_KEYS = new Set(['idType', 'expiryDate']);
 
 function formatValue(value: unknown): string {

@@ -1,56 +1,31 @@
-# Troubleshooting deployment issues
+# Troubleshooting
 
-## Verify the Vercel build
+Symptoms, causes and fixes for building, running and deploying SanoVault Web. For the architecture and variables see [README.md](./README.md); for how production is set up see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-In Vercel, open the latest deployment and inspect the build logs. The project
-uses the Next.js preset with `npm run build` and produces `.next` output.
+## Build and deploy
 
-Common build failures are missing dependencies, TypeScript errors, or an
-incorrect Vercel root directory. When deploying from the parent repository,
-the root directory must be `sanovault-web`.
+| Symptom | Cause and fix |
+| --- | --- |
+| Vercel: "No Next.js version detected" or 404 on every route | The Vercel root directory is wrong. When deploying from the parent repository it must be `sanovault-web`. |
+| Build fails while migrating | `DIRECT_URL` is missing or is the pooled string. It must be a Neon **direct** connection. Fix it and redeploy; migrations resume where they stopped. |
+| Build fails on type errors | Run `npx tsc --noEmit` and `npm run lint` locally; fix before pushing. |
+| API returns "relation/column does not exist" | The code is ahead of the database. Run `npm run db:migrate` against that environment (a normal build does this first). |
 
-## Required environment variables
+## Environment
 
-Configure the production values in Vercel Project Settings → Environment
-Variables:
+| Symptom | Cause and fix |
+| --- | --- |
+| `DATABASE_URL must be configured` | Missing in `.env.local` (local) or Vercel settings. Restart the dev server after editing. |
+| Sign-in loops or "invalid session" | `NEON_AUTH_BASE_URL` or `NEON_AUTH_COOKIE_SECRET` is missing or from a different branch. Add your origin under Neon Console → Auth → trusted domains. |
+| Google sign-in fails | Google must be enabled in Neon Console → Auth, with `{NEON_AUTH_BASE_URL}/callback/google` registered at Google. |
+| Uploads fail | Check all four `R2_*` variables and that the access key is scoped to the bucket. |
+| OCR or classification returns an error | Check `GROQ_API_KEY`, `GROQ_VISION_MODEL`, the user's AI-processing consent (More → AI document processing), and the hourly `RATE_LIMIT_*` values. |
+| Invite email "Key not found" | `BREVO_API_KEY` is an SMTP key (`xsmtpsib-`). Use an API key (`xkeysib-`). |
+| Cron routes return 401 | `CRON_SECRET` is not set, or the request lacks `Authorization: Bearer <secret>`. |
 
-- `DATABASE_URL` — Neon pooled PostgreSQL connection string.
-- `DIRECT_URL` — Neon direct connection string, used only by migrations.
-- `NEON_AUTH_BASE_URL` and `NEON_AUTH_COOKIE_SECRET` — Neon Auth settings.
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
-  `R2_BUCKET_NAME` — private Cloudflare R2 document storage.
-- `GROQ_API_KEY` — required when using AI analysis or vision OCR.
-- `BREVO_API_KEY` and `EMAIL_FROM` — required for household invite email.
-- `NEXT_PUBLIC_APP_URL` — the public application origin, used in invite links.
+## Runtime
 
-Do not configure legacy `NEXTAUTH_*` or `MONGODB_*` variables; this project
-uses Neon Auth and Postgres exclusively.
-
-## Database migrations
-
-Deploy application code only after applying its database migrations:
-
-```bash
-npm run db:migrate
-```
-
-Use a direct Neon connection in `DIRECT_URL`. The migration runner records
-completed files in `schema_migrations`, so it is safe to run again. If an API
-route reports a missing table or column, apply migrations before retrying the
-deployment.
-
-## Runtime errors
-
-Production responses include an opaque `requestId` for unexpected server
-errors. Check the matching Vercel function log entry; production logs are
-intentionally redacted and do not include raw database or provider errors.
-
-For local troubleshooting, run:
-
-```bash
-npm run build
-npm run start
-```
-
-Then visit `http://localhost:3001`. Local development logs retain detailed
-errors for diagnosis.
+- Unexpected server errors return an opaque `requestId`. Find the matching entry in the Vercel function logs. Production logs are redacted and omit raw database or provider errors.
+- Locally, `npm run build && npm run start` reproduces a production build on `http://localhost:3001`; development logs keep full error detail.
+- Mobile app shows old data after a change: the app shows its on-device cache first and refreshes in the background. Pull to refresh, or check the connection if a "needs a connection" message appears when editing.
+- A PDF stays under **Needs review** after sharing from the phone: it is probably password protected. Add the password under the person's profile → File passwords, then reopen the report.

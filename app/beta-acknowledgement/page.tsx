@@ -1,10 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useSession } from '@/lib/auth/client';
 import {
   BETA_ACKNOWLEDGEMENT_TEXT,
   BETA_ACKNOWLEDGEMENT_TITLE,
   BETA_ACKNOWLEDGEMENT_VERSION,
+  GROQ_AI_CONSENT_TEXT,
+  GROQ_AI_CONSENT_ACKNOWLEDGEMENT,
 } from '@/lib/legal/beta-acknowledgement';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -19,6 +22,7 @@ function BetaAcknowledgementContent() {
   const searchParams = useSearchParams();
   const callbackUrl = useMemo(() => safeCallbackUrl(searchParams.get('callbackUrl')), [searchParams]);
   const [agreed, setAgreed] = useState(false);
+  const [groqAiEnabled, setGroqAiEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState('');
@@ -32,12 +36,13 @@ function BetaAcknowledgementContent() {
 
     let active = true;
     void fetch('/api/users/beta-acknowledgement', { cache: 'no-store' })
-      .then(async (response) => ({ response, body: await response.json() as { acknowledged?: boolean } }))
+      .then(async (response) => ({ response, body: await response.json() as { acknowledged?: boolean; groqAiEnabled?: boolean } }))
       .then(({ response, body }) => {
         if (!active) return;
         if (!response.ok) {
           setError('We could not verify your acknowledgement. Please try again.');
-        } else if (body.acknowledged) {
+        } else if (body.acknowledged && body.groqAiEnabled !== undefined) {
+          setGroqAiEnabled(body.groqAiEnabled);
           router.replace(callbackUrl);
           return;
         }
@@ -63,7 +68,7 @@ function BetaAcknowledgementContent() {
       const response = await fetch('/api/users/beta-acknowledgement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: BETA_ACKNOWLEDGEMENT_VERSION }),
+        body: JSON.stringify({ version: BETA_ACKNOWLEDGEMENT_VERSION, groqAiEnabled }),
       });
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || 'Unable to save your acknowledgement.');
@@ -86,7 +91,7 @@ function BetaAcknowledgementContent() {
         <p className="text-sm font-semibold uppercase tracking-wide text-coral">Before you continue</p>
         <h1 className="mt-2 text-3xl font-bold text-gray-900">{BETA_ACKNOWLEDGEMENT_TITLE}</h1>
         <p className="mt-6 text-lg leading-8 text-gray-800">
-          {BETA_ACKNOWLEDGEMENT_TEXT}
+          {BETA_ACKNOWLEDGEMENT_TEXT} <Link href="/privacy" className="underline">Read privacy policy</Link> · <Link href="/delete-account" className="underline">Delete account</Link>
         </p>
 
         <form className="mt-8 space-y-5" onSubmit={accept}>
@@ -100,6 +105,15 @@ function BetaAcknowledgementContent() {
             />
             <span>I understand, and I want to continue.</span>
           </label>
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+            <p className="font-semibold text-gray-900">Optional AI document processing</p>
+            <p className="mt-2 text-sm leading-6 text-gray-700">{GROQ_AI_CONSENT_TEXT} You can change this later in Settings.</p>
+            <p className="mt-2 text-xs leading-5 text-gray-600">{GROQ_AI_CONSENT_ACKNOWLEDGEMENT}</p>
+            <label className="mt-4 flex cursor-pointer gap-3 text-base text-gray-800">
+              <input type="checkbox" checked={groqAiEnabled} onChange={(event) => setGroqAiEnabled(event.target.checked)} className="mt-1 h-5 w-5 rounded border-gray-300 text-coral focus:ring-coral" />
+              <span>Enable Groq AI document processing (on by default)</span>
+            </label>
+          </div>
           <button
             type="submit"
             disabled={!agreed || loading}

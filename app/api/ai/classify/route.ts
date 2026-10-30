@@ -4,6 +4,7 @@ import { getDocumentById, updateDocumentStatus } from '@/lib/services/document.s
 import { classifyDocument } from '@/lib/services/ai.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 import { enforceHourlyRateLimit } from '@/lib/security/rate-limit';
+import { requireGroqAiConsent } from '@/lib/legal/groq-consent';
 
 function limitToFirstNWords(text: string, maxWords: number): string {
     if (!text || text.trim().length === 0) {
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
             throw new AppError('Unauthorized', 401);
         }
         await enforceHourlyRateLimit(user.id, 'ai');
+        await requireGroqAiConsent(user.id);
 
         const { documentId, text } = await request.json();
 

@@ -83,7 +83,13 @@ const nextConfig: NextConfig = {
   transpilePackages: ['pdfjs-dist', '@cantoo/pdf-lib'],
   // Keep libheif's WebAssembly loader intact in server functions. Bundling it
   // triggers a dynamic-require warning and is unnecessary for this Node-only path.
-  serverExternalPackages: ['heic-convert'],
+  serverExternalPackages: ['heic-convert', '@napi-rs/canvas'],
+  outputFileTracingIncludes: {
+    '/api/**': [
+      './node_modules/pdfjs-dist/cmaps/**',
+      './node_modules/pdfjs-dist/standard_fonts/**',
+    ],
+  },
   async redirects() {
     return [
       {

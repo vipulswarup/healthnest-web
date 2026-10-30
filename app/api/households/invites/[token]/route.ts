@@ -136,7 +136,7 @@ export async function POST(
       if (!(await canAccessPatient(user.id, patientId))) {
         throw new AppError('One or more selected patients are not accessible', 400);
       }
-      await linkPatientToHousehold(invite.household_id, patientId);
+      await linkPatientToHousehold(invite.household_id, patientId, user.id);
     }
 
     await sql`

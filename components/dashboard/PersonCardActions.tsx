@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { svBtnOutline, svBtnPrimary, svBtnSecondary } from '@/lib/ui/buttons';
+import { svBtnOutline, svBtnPrimary } from '@/lib/ui/buttons';
 
 type TrackLink = {
   href: string;
@@ -14,17 +14,15 @@ function trackLinks(patientId: string): TrackLink[] {
     { href: `/growth?patientId=${patientId}`, label: 'Height & Weight' },
     { href: `/vaccinations?patientId=${patientId}`, label: 'Vaccinations' },
     { href: `/medications?patientId=${patientId}`, label: 'Medicines' },
-    { href: `/visit-notes?patientId=${patientId}`, label: 'Visit Notes' },
+    { href: `/for-the-doctor?patientId=${patientId}`, label: 'Prepare doctor packet' },
   ];
 }
 
 export function PersonCardActions({
   patientId,
-  onAddReport,
   onNavigate,
 }: {
   patientId: string;
-  onAddReport: () => void;
   onNavigate: () => void;
 }) {
   const links = trackLinks(patientId);
@@ -32,17 +30,14 @@ export function PersonCardActions({
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="grid grid-cols-3 gap-2">
-        <button type="button" className={`${svBtnPrimary} w-full px-2 text-sm sm:text-base`} onClick={onAddReport}>
-          Add a Report
-        </button>
+      <div className="grid grid-cols-2 gap-2">
         <Link
-          href={`/for-the-doctor?patientId=${patientId}`}
+          href={`/visit-notes?patientId=${patientId}`}
           prefetch={false}
           onClick={onNavigate}
-          className={`${svBtnSecondary} w-full px-2 text-sm sm:text-base`}
+          className={`${svBtnPrimary} w-full px-2 text-sm sm:text-base`}
         >
-          For the Doctor
+          Log Symptom
         </Link>
         <Link
           href={`/bp?patientId=${patientId}`}
@@ -59,8 +54,8 @@ export function PersonCardActions({
         onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
       >
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-base font-medium text-ink marker:content-none [&::-webkit-details-marker]:hidden">
-          <span>More Tracking</span>
-          <span className="hidden text-sm font-normal text-blue-slate sm:inline group-open:hidden">Growth, Vaccines, Meds</span>
+          <span>More</span>
+          <span className="hidden text-sm font-normal text-blue-slate sm:inline group-open:hidden">Growth, Vaccines, Doctor packet</span>
           <span aria-hidden className="text-blue-slate group-open:rotate-180">▾</span>
         </summary>
         <div className="grid grid-cols-2 gap-2 border-t border-silver px-3 pb-3 pt-2">

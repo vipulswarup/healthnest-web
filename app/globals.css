@@ -1,35 +1,197 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+/*
+ * Design tokens from the shared reference palette: clouded blue, soft greys,
+ * peach and highlighter red. Mirrors sanovault-mobile/lib/theme/sv_colors.dart.
+ */
 :root {
-  --ink: #2d3142;
-  --slate: #4f5d75;
-  --silver: #bfc0c0;
-  --coral: #ef8354;
-  --coral-strong: #d96c3d;
-  --background: #f4f4f5;
-  --foreground: #2d3142;
-  --brand: #ef8354;
-  --brand-strong: #d96c3d;
+  --brand: #1e76f7;
+  --brand-strong: #165fcf;
+  --brand-tint: #e8f0ff;
+  --ink: #362f2f;
+  --slate: #625d66;
+  --sage: var(--brand);
+  --cream: #f3f2f3;
+  --silver: #cdd1d9;
+  --peach: #f4999d;
+  --highlighter-red: #e44b58;
+  --danger: #b22b3c;
+  --danger-tint: #fdebee;
+  --warning: var(--ink);
+  --warning-tint: var(--peach);
+  --success: var(--brand-strong);
+  /* Legacy action names use the darker blue for readable white button text. */
+  --coral: var(--brand-strong);
+  --coral-strong: #104ca9;
+  --background: var(--cream);
+  --foreground: var(--ink);
   --surface: #ffffff;
-  --border: #bfc0c0;
-  --accent: oklch(0.72 0.14 48);
-  --accent-foreground: oklch(0.99 0 0);
-  --app-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --app-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --surface-foreground: var(--ink);
+  --surface-secondary: var(--cream);
+  --surface-secondary-foreground: var(--ink);
+  --surface-tertiary: #e8e8ec;
+  --surface-tertiary-foreground: var(--ink);
+  --border: var(--silver);
+  --separator: var(--silver);
+  --muted: var(--slate);
+  --default: #e8e8ec;
+  --default-foreground: var(--ink);
+  --field-background: #ffffff;
+  --field-foreground: var(--ink);
+  --field-placeholder: var(--slate);
+  --field-border: var(--silver);
+  --accent: var(--brand-strong);
+  --accent-foreground: #ffffff;
+  --danger-foreground: #ffffff;
+  --warning-foreground: var(--ink);
+  --success-foreground: #ffffff;
+  --focus: var(--brand);
+  --app-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --app-font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-tint: var(--brand-tint);
   --color-ink: var(--ink);
+  --color-slate: var(--slate);
   --color-blue-slate: var(--slate);
+  --color-sage: var(--sage);
+  --color-cream: var(--cream);
   --color-silver: var(--silver);
+  --color-peach: var(--peach);
+  --color-highlighter-red: var(--highlighter-red);
+  --color-danger-strong: var(--danger);
   --color-coral: var(--coral);
   --color-coral-strong: var(--coral-strong);
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
+}
+
+/*
+ * Remap the stock neutral and accent scales so the many existing
+ * neutral, accent and status utility classes follow the reference palette.
+ */
+@theme {
+  --color-gray-50: #f3f2f3;
+  --color-gray-100: #eae9ed;
+  --color-gray-200: #dfe0e5;
+  --color-gray-300: #cdd1d9;
+  --color-gray-400: #9b9da9;
+  --color-gray-500: #74717c;
+  --color-gray-600: #625d66;
+  --color-gray-700: #514b53;
+  --color-gray-800: #433b40;
+  --color-gray-900: #362f2f;
+  --color-gray-950: #282323;
+  --color-slate-50: #f3f2f3;
+  --color-slate-100: #eae9ed;
+  --color-slate-200: #dfe0e5;
+  --color-slate-300: #cdd1d9;
+  --color-slate-400: #9b9da9;
+  --color-slate-500: #74717c;
+  --color-slate-600: #625d66;
+  --color-slate-700: #514b53;
+  --color-slate-800: #433b40;
+  --color-slate-900: #362f2f;
+  --color-slate-950: #282323;
+  --color-zinc-50: #f3f2f3;
+  --color-zinc-100: #eae9ed;
+  --color-zinc-200: #dfe0e5;
+  --color-zinc-300: #cdd1d9;
+  --color-zinc-400: #9b9da9;
+  --color-zinc-500: #74717c;
+  --color-zinc-600: #625d66;
+  --color-zinc-700: #514b53;
+  --color-zinc-800: #433b40;
+  --color-zinc-900: #362f2f;
+  --color-zinc-950: #282323;
+  --color-blue-50: #f0f5ff;
+  --color-blue-100: #e8f0ff;
+  --color-blue-200: #c8dcff;
+  --color-blue-300: #a2c5ff;
+  --color-blue-400: #72a6fc;
+  --color-blue-500: #1e76f7;
+  --color-blue-600: #165fcf;
+  --color-blue-700: #104ca9;
+  --color-blue-800: #103f88;
+  --color-blue-900: #12376c;
+  --color-blue-950: #0b2148;
+  --color-indigo-50: #f0f5ff;
+  --color-indigo-100: #e8f0ff;
+  --color-indigo-200: #c8dcff;
+  --color-indigo-300: #a2c5ff;
+  --color-indigo-400: #72a6fc;
+  --color-indigo-500: #1e76f7;
+  --color-indigo-600: #165fcf;
+  --color-indigo-700: #104ca9;
+  --color-indigo-800: #103f88;
+  --color-indigo-900: #12376c;
+  --color-indigo-950: #0b2148;
+  --color-red-50: #fff3f4;
+  --color-red-100: #fdebee;
+  --color-red-200: #fbcfd3;
+  --color-red-300: #f4999d;
+  --color-red-400: #ed7680;
+  --color-red-500: #e44b58;
+  --color-red-600: #b22b3c;
+  --color-red-700: #922135;
+  --color-red-800: #781e30;
+  --color-red-900: #641d2b;
+  --color-red-950: #390b16;
+  --color-rose-50: #fff3f4;
+  --color-rose-100: #fdebee;
+  --color-rose-200: #fbcfd3;
+  --color-rose-300: #f4999d;
+  --color-rose-400: #ed7680;
+  --color-rose-500: #e44b58;
+  --color-rose-600: #b22b3c;
+  --color-rose-700: #922135;
+  --color-rose-800: #781e30;
+  --color-rose-900: #641d2b;
+  --color-rose-950: #390b16;
+  --color-amber-50: #fff3f4;
+  --color-amber-100: #fdebee;
+  --color-amber-200: #fbcfd3;
+  --color-amber-300: #f4999d;
+  --color-amber-400: #ed7680;
+  --color-amber-500: #e44b58;
+  --color-amber-600: #b22b3c;
+  --color-amber-700: #922135;
+  --color-amber-800: #781e30;
+  --color-amber-900: #641d2b;
+  --color-amber-950: #390b16;
+  --color-emerald-50: #f0f5ff;
+  --color-emerald-100: #e8f0ff;
+  --color-emerald-200: #c8dcff;
+  --color-emerald-300: #a2c5ff;
+  --color-emerald-400: #72a6fc;
+  --color-emerald-500: #1e76f7;
+  --color-emerald-600: #165fcf;
+  --color-emerald-700: #104ca9;
+  --color-emerald-800: #103f88;
+  --color-emerald-900: #12376c;
+  --color-emerald-950: #0b2148;
+  --color-green-50: #f0f5ff;
+  --color-green-100: #e8f0ff;
+  --color-green-200: #c8dcff;
+  --color-green-300: #a2c5ff;
+  --color-green-400: #72a6fc;
+  --color-green-500: #1e76f7;
+  --color-green-600: #165fcf;
+  --color-green-700: #104ca9;
+  --color-green-800: #103f88;
+  --color-green-900: #12376c;
+  --color-green-950: #0b2148;
 }
 
 body {
@@ -60,12 +222,12 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--coral);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--coral) 28%, white);
+  background: color-mix(in srgb, var(--sage) 42%, white);
   color: var(--ink);
 }
 
@@ -85,7 +247,7 @@ textarea {
 }
 
 .sv-btn-primary {
-  background: var(--coral);
+  background: var(--brand-strong);
   color: #ffffff;
 }
 
@@ -94,22 +256,22 @@ textarea {
 }
 
 .sv-btn-secondary {
-  background: var(--slate);
-  color: #ffffff;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
 }
 
 .sv-btn-secondary:hover {
-  background: var(--ink);
+  background: color-mix(in srgb, var(--brand) 18%, white);
 }
 
 .sv-btn-outline {
   background: #ffffff;
-  color: var(--ink);
-  border: 1px solid var(--silver);
+  color: var(--brand-strong);
+  border: 1px solid var(--brand);
 }
 
 .sv-btn-outline:hover {
-  background: var(--background);
+  background: var(--brand-tint);
 }
 
 [data-slot="button"] {

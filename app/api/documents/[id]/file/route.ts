@@ -3,14 +3,15 @@ import { z } from 'zod';
 import { getCurrentUser } from '@/lib/auth/session';
 import { canAccessDocument } from '@/lib/households/access';
 import { getR2Object } from '@/lib/r2';
-import { getDocumentById } from '@/lib/services/document.service';
+import { getDocumentById, getDocumentDownloadName } from '@/lib/services/document.service';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
+import { safeDownloadFileName } from '@/lib/reports/report-title';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 function safeFileName(name: string): string {
-  return name.replace(/[\r\n"]/g, '_').slice(0, 120) || 'document';
+  return safeDownloadFileName(name);
 }
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,11 +28,12 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     const body = await getR2Object(document.r2Key);
     if (!body) throw new AppError('Stored document is empty', 422);
     const bytes = Buffer.from(await body.transformToByteArray());
+    const fileName = await getDocumentDownloadName(id);
 
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': document.fileType || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${safeFileName(document.fileName)}"`,
+        'Content-Disposition': `inline; filename="${safeFileName(fileName)}"`,
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
       },

@@ -2,14 +2,14 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getAuthenticatedUser } from '@/lib/auth/session';
 import { LandingPage } from '@/components/marketing/LandingPage';
+import { publicPageMetadata } from '@/lib/seo';
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
-  alternates: { canonical: '/' },
-  robots: { index: true, follow: true },
-};
+  path: '/',
+});
 
 export default async function Home() {
   try {

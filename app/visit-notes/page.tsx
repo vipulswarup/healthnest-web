@@ -34,7 +34,6 @@ function VisitNotesContent() {
   const [noteDate, setNoteDate] = useState(todayLocal());
   const [observed, setObserved] = useState('');
   const [askDoctor, setAskDoctor] = useState('');
-  const [pinNew, setPinNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
@@ -44,7 +43,6 @@ function VisitNotesContent() {
   const [editingNoteDate, setEditingNoteDate] = useState('');
   const [editingObserved, setEditingObserved] = useState('');
   const [editingAskDoctor, setEditingAskDoctor] = useState('');
-  const [editingPinned, setEditingPinned] = useState(false);
   const [updatingNote, setUpdatingNote] = useState(false);
 
   useEffect(() => {
@@ -127,7 +125,6 @@ function VisitNotesContent() {
           noteDate,
           observed,
           askDoctor,
-          pinned: pinNew,
         }),
       });
       const data = await response.json() as { notes?: VisitNote[]; error?: string };
@@ -135,7 +132,6 @@ function VisitNotesContent() {
       setNotes(data.notes || []);
       setObserved('');
       setAskDoctor('');
-      setPinNew(false);
       setNoteDate(todayLocal());
       setSaved(true);
     } catch (err) {
@@ -172,22 +168,6 @@ function VisitNotesContent() {
     }
   };
 
-  const togglePin = async (note: VisitNote) => {
-    setError('');
-    try {
-      const response = await fetch(`/api/visit-notes/${note.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pinned: !note.pinned }),
-      });
-      const data = await response.json() as { notes?: VisitNote[]; error?: string };
-      if (!response.ok) throw new Error(data.error || 'Could not update note');
-      setNotes(data.notes || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update note');
-    }
-  };
-
   const removeNote = async (note: VisitNote) => {
     setError('');
     try {
@@ -205,7 +185,6 @@ function VisitNotesContent() {
     setEditingNoteDate(note.noteDate);
     setEditingObserved(note.observed);
     setEditingAskDoctor(note.askDoctor);
-    setEditingPinned(note.pinned);
     setSaved(false);
     setError('');
   };
@@ -215,7 +194,6 @@ function VisitNotesContent() {
     setEditingNoteDate('');
     setEditingObserved('');
     setEditingAskDoctor('');
-    setEditingPinned(false);
   };
 
   const saveEditedNote = async () => {
@@ -234,7 +212,6 @@ function VisitNotesContent() {
           noteDate: editingNoteDate,
           observed: editingObserved.trim(),
           askDoctor: editingAskDoctor.trim(),
-          pinned: editingPinned,
         }),
       });
       const data = await response.json() as { notes?: VisitNote[]; error?: string };
@@ -258,8 +235,8 @@ function VisitNotesContent() {
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-gray-200 bg-white px-4 py-4">
         <div className="mx-auto flex max-w-lg items-center justify-between">
-          <Link href="/dashboard" className="min-h-11 text-base font-medium text-coral">Family</Link>
-          <p className="text-base font-semibold text-gray-950">Visit Notes</p>
+          <Link href="/dashboard" className="min-h-11 text-base font-medium text-brand-strong">Home</Link>
+          <p className="text-base font-semibold text-gray-950">Symptoms &amp; Notes</p>
           <Link href={selectedId ? `/for-the-doctor?patientId=${selectedId}` : '/for-the-doctor'} className="min-h-11 text-sm font-medium text-coral">
             For doctor
           </Link>
@@ -282,27 +259,6 @@ function VisitNotesContent() {
               <div className="mt-6 space-y-6">
                 <h1 className="text-3xl font-bold tracking-tight text-gray-950">{personName(selected)}</h1>
 
-                <section className="rounded-2xl border border-gray-200 bg-white p-4">
-                  <h2 className="text-lg font-semibold text-gray-950">Next appointment</h2>
-                  <p className="mt-1 text-sm text-gray-600">Shows on the doctor packet when you print or share.</p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <input
-                      type="date"
-                      value={nextAppointment}
-                      onChange={(event) => setNextAppointment(event.target.value)}
-                      className="min-h-12 flex-1 rounded-xl border border-gray-300 px-3 text-base text-gray-950"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveNextAppointment()}
-                      disabled={savingAppointment}
-                      className="min-h-12 rounded-xl border border-gray-300 px-4 text-base font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {savingAppointment ? 'Saving…' : 'Save date'}
-                    </button>
-                  </div>
-                </section>
-
                 <form
                   className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4"
                   onSubmit={(event) => {
@@ -310,7 +266,7 @@ function VisitNotesContent() {
                     void saveNote();
                   }}
                 >
-                  <h2 className="text-lg font-semibold text-gray-950">Add a Note</h2>
+                  <h2 className="text-lg font-semibold text-gray-950">Log a Symptom or Note</h2>
                   <label className="block text-base font-medium text-gray-800">
                     Date
                     <input
@@ -340,10 +296,6 @@ function VisitNotesContent() {
                       className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-950"
                     />
                   </label>
-                  <label className="flex items-center gap-2 text-base text-gray-800">
-                    <input type="checkbox" checked={pinNew} onChange={(event) => setPinNew(event.target.checked)} />
-                    Pin for the next doctor visit
-                  </label>
                   {error ? <p className="text-base text-red-700" role="alert">{error}</p> : null}
                   {saved ? <p className="text-base text-green-800">Saved.</p> : null}
                   <button
@@ -356,11 +308,11 @@ function VisitNotesContent() {
                 </form>
 
                 <section>
-                  <h2 className="text-lg font-semibold text-gray-950">Recent notes</h2>
+                  <h2 className="text-lg font-semibold text-gray-950">History</h2>
                   {loading ? (
                     <p className="mt-3 text-gray-600" role="status">Loading notes…</p>
                   ) : notes.length === 0 ? (
-                    <p className="mt-3 text-base text-gray-600">No visit notes yet.</p>
+                    <p className="mt-3 text-base text-gray-600">Nothing logged yet.</p>
                   ) : (
                     <ul className="mt-3 space-y-3">
                       {notes.map((note) => (
@@ -394,10 +346,6 @@ function VisitNotesContent() {
                                   className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-950"
                                 />
                               </label>
-                              <label className="flex items-center gap-2 text-sm text-gray-800">
-                                <input type="checkbox" checked={editingPinned} onChange={(event) => setEditingPinned(event.target.checked)} />
-                                Pin for the next doctor visit
-                              </label>
                               <div className="flex flex-wrap gap-3">
                                 <button
                                   type="button"
@@ -419,16 +367,13 @@ function VisitNotesContent() {
                             </div>
                           ) : (
                             <>
-                              <p className="text-sm font-medium text-gray-500">{formatNoteDate(note.noteDate)}{note.pinned ? ' · Pinned' : ''}</p>
+                              <p className="text-sm font-medium text-gray-500">{formatNoteDate(note.noteDate)}</p>
                               {note.observed.trim() ? <p className="mt-2 text-base text-gray-900"><span className="font-medium">Noticed:</span> {note.observed}</p> : null}
                               {note.askDoctor.trim() ? <p className="mt-2 text-base text-gray-900"><span className="font-medium">Ask:</span> {note.askDoctor}</p> : null}
                               <p className="mt-2 text-sm text-gray-600">{visitNoteLine(note)}</p>
                               <div className="mt-3 flex flex-wrap gap-3">
                                 <button type="button" onClick={() => startEdit(note)} className="text-sm font-medium text-coral hover:underline">
                                   Edit
-                                </button>
-                                <button type="button" onClick={() => void togglePin(note)} className="text-sm font-medium text-coral hover:underline">
-                                  {note.pinned ? 'Unpin' : 'Pin for visit'}
                                 </button>
                                 <button type="button" onClick={() => void removeNote(note)} className="text-sm font-medium text-red-700 hover:underline">
                                   Delete
@@ -440,6 +385,28 @@ function VisitNotesContent() {
                       ))}
                     </ul>
                   )}
+                </section>
+
+
+                <section className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <h2 className="text-lg font-semibold text-gray-950">Next appointment</h2>
+                  <p className="mt-1 text-sm text-gray-600">Shows on the doctor packet when you print or share.</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <input
+                      type="date"
+                      value={nextAppointment}
+                      onChange={(event) => setNextAppointment(event.target.value)}
+                      className="min-h-12 flex-1 rounded-xl border border-gray-300 px-3 text-base text-gray-950"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void saveNextAppointment()}
+                      disabled={savingAppointment}
+                      className="min-h-12 rounded-xl border border-gray-300 px-4 text-base font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {savingAppointment ? 'Saving…' : 'Save date'}
+                    </button>
+                  </div>
                 </section>
               </div>
             ) : null}

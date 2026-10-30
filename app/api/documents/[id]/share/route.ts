@@ -46,7 +46,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   try {
     const { id } = await resolveContext(params);
     const share = await getActiveDocumentShare(id);
-    const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://sanovault.com';
+    const origin = process.env.NEXT_PUBLIC_APP_URL || appBaseUrl();
     return NextResponse.json({ share: sharePayload(share, origin) });
   } catch (error) {
     return handleError(error);

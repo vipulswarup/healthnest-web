@@ -1,6 +1,6 @@
 {
   "name": "sanovault-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
@@ -11,6 +11,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "init-db": "npm run db:migrate",
     "test:blood-summary": "tsx scripts/seed-and-test-blood-summary.ts",
+    "test:patients": "tsx --test tests/patients/*.test.ts",
     "test:blood-summary:unit": "tsx --test tests/reports/blood-summary.test.ts",
     "test:images": "tsx --test tests/images/*.test.ts",
     "test:security": "tsx --test tests/security/*.test.ts"
@@ -21,11 +22,13 @@
     "@cantoo/pdf-lib": "^2.9.1",
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
+    "@napi-rs/canvas": "^0.1.80",
     "@neondatabase/auth": "0.5.0-beta",
     "@neondatabase/serverless": "^1.1.0",
     "dotenv": "^17.2.3",
     "heic-convert": "^2.1.0",
     "jose": "^6.2.10",
+    "jszip": "^3.10.2",
     "next": "16.3.0",
     "pdfjs-dist": "^4.10.38",
     "pngjs": "^7.0.0",

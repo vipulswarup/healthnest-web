@@ -1,5 +1,20 @@
 export type VerifiedUpload = {
-  extension: 'pdf' | 'jpg' | 'png' | 'webp' | 'tif' | 'heic' | 'avif' | 'gif' | 'bmp';
+  extension:
+    | 'pdf'
+    | 'jpg'
+    | 'png'
+    | 'webp'
+    | 'tif'
+    | 'heic'
+    | 'avif'
+    | 'gif'
+    | 'bmp'
+    | 'docx'
+    | 'xlsx'
+    | 'pptx'
+    | 'doc'
+    | 'xls'
+    | 'ppt';
   mimeType:
     | 'application/pdf'
     | 'image/jpeg'
@@ -10,7 +25,58 @@ export type VerifiedUpload = {
     | 'image/heif'
     | 'image/avif'
     | 'image/gif'
-    | 'image/bmp';
+    | 'image/bmp'
+    | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    | 'application/msword'
+    | 'application/vnd.ms-excel'
+    | 'application/vnd.ms-powerpoint';
+};
+
+const OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+const OFFICE_XML = {
+  docx: {
+    extension: 'docx' as const,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' as const,
+    mimes: [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ],
+  },
+  xlsx: {
+    extension: 'xlsx' as const,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' as const,
+    mimes: [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ],
+  },
+  pptx: {
+    extension: 'pptx' as const,
+    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' as const,
+    mimes: [
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-powerpoint',
+    ],
+  },
+};
+const OFFICE_OLE = {
+  doc: {
+    extension: 'doc' as const,
+    mimeType: 'application/msword' as const,
+    mimes: ['application/msword'],
+  },
+  xls: {
+    extension: 'xls' as const,
+    mimeType: 'application/vnd.ms-excel' as const,
+    mimes: ['application/vnd.ms-excel', 'application/msexcel'],
+  },
+  ppt: {
+    extension: 'ppt' as const,
+    mimeType: 'application/vnd.ms-powerpoint' as const,
+    mimes: ['application/vnd.ms-powerpoint', 'application/mspowerpoint'],
+  },
 };
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -22,9 +88,16 @@ function hasPrefix(buffer: Buffer, prefix: Buffer): boolean {
 }
 
 function mimeMatches(declaredMimeType: string, allowed: string[]): boolean {
-  // Some browsers leave File.type blank for HEIC and TIFF. The verified byte
-  // signature remains authoritative, while a conflicting non-empty MIME is rejected.
-  return declaredMimeType === '' || allowed.includes(declaredMimeType.toLowerCase());
+  // Some browsers leave File.type blank for HEIC and TIFF. Native multipart
+  // clients often send application/octet-stream. The verified byte signature
+  // remains authoritative; only a conflicting non-generic MIME is rejected.
+  const normalized = declaredMimeType.toLowerCase();
+  return (
+    normalized === '' ||
+    normalized === 'application/octet-stream' ||
+    normalized === 'binary/octet-stream' ||
+    allowed.includes(normalized)
+  );
 }
 
 function isoBmffBrand(buffer: Buffer): 'heif' | 'avif' | null {
@@ -44,11 +117,47 @@ function isoBmffBrand(buffer: Buffer): 'heif' | 'avif' | null {
   return null;
 }
 
+function latinWindow(buffer: Buffer): string {
+  const head = buffer.subarray(0, Math.min(buffer.length, 32_768)).toString('latin1');
+  const tailStart = Math.max(0, buffer.length - 65_536);
+  const tail = buffer.subarray(tailStart).toString('latin1');
+  return head + tail;
+}
+
+function sniffOpenXml(buffer: Buffer): keyof typeof OFFICE_XML | null {
+  if (!hasPrefix(buffer, Buffer.from('PK'))) return null;
+  const hay = latinWindow(buffer);
+  if (hay.includes('word/document')) return 'docx';
+  if (hay.includes('xl/workbook')) return 'xlsx';
+  if (hay.includes('ppt/presentation')) return 'pptx';
+  return null;
+}
+
+function fileNameKind(fileName: string | undefined): string {
+  const match = /\.([a-z0-9]+)$/i.exec(fileName || '');
+  return match ? match[1].toLowerCase() : '';
+}
+
+function sniffOle(buffer: Buffer, declaredMimeType: string, fileName?: string): keyof typeof OFFICE_OLE | null {
+  if (!hasPrefix(buffer, OLE_SIGNATURE)) return null;
+  const ext = fileNameKind(fileName);
+  if (ext === 'doc' || ext === 'xls' || ext === 'ppt') return ext;
+  const mime = declaredMimeType.toLowerCase();
+  if (OFFICE_OLE.doc.mimes.includes(mime)) return 'doc';
+  if (OFFICE_OLE.xls.mimes.includes(mime)) return 'xls';
+  if (OFFICE_OLE.ppt.mimes.includes(mime)) return 'ppt';
+  return null;
+}
+
 /**
  * Identifies only the formats the service accepts. Browser-supplied MIME types
  * and file extensions are metadata, not proof of a file's actual content.
  */
-export function verifyUploadSignature(buffer: Buffer, declaredMimeType: string): VerifiedUpload | null {
+export function verifyUploadSignature(
+  buffer: Buffer,
+  declaredMimeType: string,
+  fileName?: string,
+): VerifiedUpload | null {
   if (hasPrefix(buffer, Buffer.from('%PDF-'))) {
     return mimeMatches(declaredMimeType, ['application/pdf'])
       ? { mimeType: 'application/pdf', extension: 'pdf' }
@@ -110,6 +219,24 @@ export function verifyUploadSignature(buffer: Buffer, declaredMimeType: string):
   if (bmffBrand === 'avif') {
     return mimeMatches(declaredMimeType, ['image/avif'])
       ? { mimeType: 'image/avif', extension: 'avif' }
+      : null;
+  }
+
+  const openXml = sniffOpenXml(buffer);
+  if (openXml) {
+    const spec = OFFICE_XML[openXml];
+    const ext = fileNameKind(fileName);
+    const declaredExtOk = !ext || ext === spec.extension || ext === spec.extension.replace('x', '');
+    return mimeMatches(declaredMimeType, spec.mimes) && declaredExtOk
+      ? { mimeType: spec.mimeType, extension: spec.extension }
+      : null;
+  }
+
+  const ole = sniffOle(buffer, declaredMimeType, fileName);
+  if (ole) {
+    const spec = OFFICE_OLE[ole];
+    return mimeMatches(declaredMimeType, spec.mimes)
+      ? { mimeType: spec.mimeType, extension: spec.extension }
       : null;
   }
 

@@ -1,9 +1,14 @@
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { AppError } from '@/lib/middleware/error-handler';
+import { closePdfJsDocument, copyPdfBytes, isPdfJsPasswordError } from '@/lib/pdf/ops';
 import path from 'path';
 import { PNG } from 'pngjs';
-import { extractImages, extractText, getDocumentProxy } from 'unpdf';
+import { extractImages, extractText, getDocumentProxy, renderPageAsImage } from 'unpdf';
 import { normalizeImageToJpeg } from '../images/normalize';
 import { getR2Object } from '../r2';
+import { isOfficeMime } from '@/lib/services/office-text.service';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 /** Llama 4 Scout was shut down 2026-07-17; qwen3.6 still accepts image inputs on Groq. */
@@ -24,6 +29,42 @@ export interface OcrOptions {
    * full: whole document text for later lab-value extraction.
    */
   mode?: OcrMode;
+  password?: string;
+}
+
+function pdfJsOpenOptions(password?: string): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    disableFontFace: true,
+    useSystemFonts: true,
+  };
+  if (password) options.password = password;
+  try {
+    const require = createRequire(import.meta.url);
+    const root = dirname(require.resolve('pdfjs-dist/package.json'));
+    options.cMapUrl = `${pathToFileURL(join(root, 'cmaps')).href}/`;
+    options.cMapPacked = true;
+    options.standardFontDataUrl = `${pathToFileURL(join(root, 'standard_fonts')).href}/`;
+  } catch {
+    // Text extraction still runs if cmap files are not in this bundle.
+  }
+  return options;
+}
+
+export function isUsefulOcrText(text: string): boolean {
+  const trimmed = text.replace(/\s+/g, ' ').trim();
+  if (trimmed.length < MIN_USEFUL_TEXT_CHARS) return false;
+  const letters = trimmed.match(/\p{L}/gu)?.length ?? 0;
+  if (letters < 40) return false;
+  const replacement = trimmed.match(/\uFFFD/g)?.length ?? 0;
+  if (replacement > letters * 0.2) return false;
+  const controls = trimmed.match(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g)?.length ?? 0;
+  if (controls > trimmed.length * 0.1) return false;
+  return true;
+}
+
+function bestOcrText(candidates: string[]): string {
+  const useful = candidates.filter(isUsefulOcrText).sort((a, b) => b.length - a.length);
+  return useful[0] || '';
 }
 
 type ImagePayload = { mime: string; dataUrl: string };
@@ -60,6 +101,18 @@ function mimeFromExtension(ext: string): string {
       return 'image/bmp';
     case '.pdf':
       return 'application/pdf';
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case '.xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case '.pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    case '.doc':
+      return 'application/msword';
+    case '.xls':
+      return 'application/vnd.ms-excel';
+    case '.ppt':
+      return 'application/vnd.ms-powerpoint';
     default:
       return 'application/octet-stream';
   }
@@ -160,8 +213,12 @@ function stripModelThinking(text: string): string {
     .trim();
 }
 
-async function extractPdfText(buffer: Buffer, options?: { firstPageOnly?: boolean }): Promise<string> {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+async function openPdfDocument(buffer: Buffer, password?: string) {
+  return getDocumentProxy(copyPdfBytes(buffer), pdfJsOpenOptions(password) as Parameters<typeof getDocumentProxy>[1]);
+}
+
+async function extractPdfText(buffer: Buffer, options?: { firstPageOnly?: boolean; password?: string }): Promise<string> {
+  const pdf = await openPdfDocument(buffer, options?.password);
   if (options?.firstPageOnly) {
     const { text } = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(text) ? text : [String(text ?? '')];
@@ -173,9 +230,9 @@ async function extractPdfText(buffer: Buffer, options?: { firstPageOnly?: boolea
 
 async function collectPdfImages(
   buffer: Buffer,
-  options: { maxPages: number; pageStart?: number },
+  options: { maxPages: number; pageStart?: number; password?: string },
 ): Promise<RawPdfImage[]> {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const pdf = await openPdfDocument(buffer, options.password);
   const start = options.pageStart ?? 1;
   const end = Math.min(pdf.numPages || 1, start + options.maxPages - 1);
   const all: RawPdfImage[] = [];
@@ -290,8 +347,8 @@ async function extractFromImageBuffer(buffer: Buffer, mime: string): Promise<str
 }
 
 /** Intake: one largest image from page 1 (metadata lives in the header). */
-async function extractIntakeVisionText(buffer: Buffer): Promise<string> {
-  const pageOneImages = await collectPdfImages(buffer, { maxPages: 1, pageStart: 1 });
+async function extractIntakeVisionText(buffer: Buffer, password?: string): Promise<string> {
+  const pageOneImages = await collectPdfImages(buffer, { maxPages: 1, pageStart: 1, password });
   const selected = pickLargestImages(pageOneImages, 1);
   if (selected.length === 0) {
     throw new Error('No embedded images found on the first PDF page for vision OCR');
@@ -303,13 +360,13 @@ async function extractIntakeVisionText(buffer: Buffer): Promise<string> {
  * Full document: OCR page images in batches of 3 for later lab-value extraction.
  * Prefer calling this from a dedicated job; intake should use mode "intake".
  */
-async function extractFullVisionText(buffer: Buffer): Promise<string> {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+async function extractFullVisionText(buffer: Buffer, password?: string): Promise<string> {
+  const pdf = await openPdfDocument(buffer, password);
   const totalPages = Math.min(pdf.numPages || 1, MAX_FULL_OCR_PAGES);
   const pageImages: RawPdfImage[] = [];
 
   for (let page = 1; page <= totalPages; page += 1) {
-    const images = await collectPdfImages(buffer, { maxPages: 1, pageStart: page });
+    const images = await collectPdfImages(buffer, { maxPages: 1, pageStart: page, password });
     const best = pickLargestImages(images, 1)[0];
     if (best) pageImages.push(best);
   }
@@ -329,58 +386,130 @@ async function extractFullVisionText(buffer: Buffer): Promise<string> {
   return chunks.join('\n\n');
 }
 
+async function canvasImport(): Promise<unknown> {
+  return import('@napi-rs/canvas');
+}
+
+async function extractRenderedVisionText(
+  buffer: Buffer,
+  options: { password?: string; maxPages: number },
+): Promise<string> {
+  await canvasImport();
+  const pdf = await openPdfDocument(buffer, options.password);
+  const totalPages = Math.min(pdf.numPages || 1, options.maxPages);
+  const chunks: string[] = [];
+  try {
+    for (let page = 1; page <= totalPages; page += 1) {
+      const png = await renderPageAsImage(pdf, page, {
+        canvasImport: canvasImport as () => Promise<typeof import('@napi-rs/canvas')>,
+        width: MAX_VISION_IMAGE_EDGE,
+      });
+      const bytes = Buffer.from(new Uint8Array(png as ArrayBuffer));
+      const text = await extractViaGroqVision([
+        { mime: 'image/png', dataUrl: `data:image/png;base64,${bytes.toString('base64')}` },
+      ]);
+      if (text.trim()) chunks.push(`--- Page ${page} ---\n${text.trim()}`);
+    }
+  } finally {
+    await closePdfJsDocument(pdf);
+  }
+  if (!chunks.length) throw new Error('PDF page rendering produced no text');
+  return chunks.join('\n\n');
+}
+
+function rethrowIfPasswordProtected(error: unknown): void {
+  if (error instanceof AppError && error.code === 'PDF_PASSWORD_REQUIRED') throw error;
+  if (isPdfJsPasswordError(error)) {
+    throw new AppError('This PDF is password protected', 409, 'PDF_PASSWORD_REQUIRED');
+  }
+}
+
+async function optionalOcrText(work: () => Promise<string>): Promise<string> {
+  try {
+    return (await work()).trim();
+  } catch (error) {
+    rethrowIfPasswordProtected(error);
+    return '';
+  }
+}
+
+export async function extractTextFromBuffer(
+  originalBuffer: Buffer,
+  mime: string,
+  options: OcrOptions = {},
+): Promise<string> {
+  const mode: OcrMode = options.mode || 'intake';
+  const password = options.password;
+  const normalizedMime = mime.toLowerCase() || 'application/octet-stream';
+  const isImage = normalizedMime.startsWith('image/');
+  const buffer = isImage
+    ? await normalizeImageToJpeg(originalBuffer, normalizedMime, MAX_VISION_IMAGE_EDGE)
+    : originalBuffer;
+  const processingMime = isImage ? 'image/jpeg' : normalizedMime;
+  const processingFileName = isImage ? 'document.jpg' : `document${extensionForMime(normalizedMime)}`;
+
+  const externalText = await optionalOcrText(() => extractViaExternalService(buffer, processingFileName, processingMime).then((text) => text || ''));
+  if (mode !== 'full' && isUsefulOcrText(externalText)) {
+    return externalText;
+  }
+
+  if (normalizedMime === 'application/pdf') {
+    const pdfText = await optionalOcrText(() => extractPdfText(buffer, { firstPageOnly: false, password }));
+    if (mode !== 'full' && isUsefulOcrText(pdfText)) {
+      return pdfText;
+    }
+
+    const embeddedVision = await optionalOcrText(() => (
+      mode === 'full' ? extractFullVisionText(buffer, password) : extractIntakeVisionText(buffer, password)
+    ));
+    const renderedVision = await optionalOcrText(() => extractRenderedVisionText(buffer, {
+      password,
+      maxPages: mode === 'full' ? MAX_FULL_OCR_PAGES : 1,
+    }));
+    return bestOcrText([externalText, pdfText, embeddedVision, renderedVision]);
+  }
+
+  const imageText = await extractFromImageBuffer(buffer, processingMime);
+  return imageText;
+}
+
+function extensionForMime(mime: string): string {
+  if (mime === 'application/pdf') return '.pdf';
+  if (mime === 'image/png') return '.png';
+  if (mime === 'image/webp') return '.webp';
+  if (mime === 'image/tiff') return '.tif';
+  if (mime === 'image/heic' || mime === 'image/heif') return '.heic';
+  if (mime === 'image/avif') return '.avif';
+  if (mime === 'image/gif') return '.gif';
+  if (mime === 'image/bmp') return '.bmp';
+  return '.jpg';
+}
+
 export async function extractTextFromImage(
   input: string,
   isR2Key: boolean = false,
   options: OcrOptions = {},
 ): Promise<string> {
-  const mode: OcrMode = options.mode || 'intake';
   const extension = path.extname(input) || '.jpg';
   const mime = mimeFromExtension(extension);
-  const fileName = path.basename(input) || `document${extension}`;
 
   try {
     const originalBuffer = await readInputBuffer(input, isR2Key);
-    const isImage = mime.startsWith('image/');
-    const buffer = isImage
-      ? await normalizeImageToJpeg(originalBuffer, mime, MAX_VISION_IMAGE_EDGE)
-      : originalBuffer;
-    const processingMime = isImage ? 'image/jpeg' : mime;
-    const processingFileName = isImage ? `${path.parse(fileName).name}.jpg` : fileName;
-
-    const externalText = await extractViaExternalService(buffer, processingFileName, processingMime);
-    if (mode !== 'full' && externalText && externalText.length >= MIN_USEFUL_TEXT_CHARS) {
-      return externalText;
+    if (isOfficeMime(mime)) {
+      const { extractOfficeText } = await import('@/lib/services/office-text.service');
+      return extractOfficeText(originalBuffer, mime);
     }
-
-    if (mime === 'application/pdf' || extension.toLowerCase() === '.pdf') {
-      const pdfText = await extractPdfText(buffer, {
-        firstPageOnly: false,
-      });
-      if (mode === 'full') {
-        const visionText = await extractFullVisionText(buffer);
-        const candidates = [externalText || '', pdfText, visionText].sort((a, b) => b.length - a.length);
-        return candidates[0] || pdfText || visionText;
-      }
-      if (pdfText.length >= MIN_USEFUL_TEXT_CHARS) {
-        return pdfText;
-      }
-
-      const visionText = await extractIntakeVisionText(buffer);
-      return visionText;
-    }
-
-    const imageText = await extractFromImageBuffer(buffer, processingMime);
-    return imageText;
-  } catch {
+    return await extractTextFromBuffer(originalBuffer, mime, options);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError('Failed to process document with OCR', 502);
   }
 }
 
-export async function pdfLacksTextLayer(buffer: Buffer): Promise<boolean> {
+export async function pdfLacksTextLayer(buffer: Buffer, password?: string): Promise<boolean> {
   try {
-    const text = await extractPdfText(buffer);
-    return text.length < MIN_USEFUL_TEXT_CHARS;
+    const text = await extractPdfText(buffer, { password });
+    return !isUsefulOcrText(text);
   } catch {
     return true;
   }

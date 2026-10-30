@@ -26,7 +26,7 @@ export async function listVisitNotes(userId: string, patientId: string): Promise
     SELECT id, patient_id, note_date, observed, ask_doctor, pinned, created_at
     FROM visit_notes
     WHERE patient_id = ${patientId}::uuid
-    ORDER BY pinned DESC, note_date DESC, created_at DESC
+    ORDER BY note_date DESC, created_at DESC
     LIMIT 50
   `;
   const notes = rows.map(toVisitNote);

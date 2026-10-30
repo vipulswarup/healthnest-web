@@ -1,17 +1,10 @@
 import { sql } from '@/lib/db/neon';
+import { toCalendarDay } from '@/lib/dates/calendar-date';
 import { BETA_ACKNOWLEDGEMENT_VERSION } from '@/lib/legal/beta-acknowledgement';
+import { reportTitle } from '@/lib/reports/report-title';
 
 function toIsoDay(value: unknown): string | undefined {
-  if (value == null) return undefined;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-  const text = String(value);
-  const iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return text;
+  return toCalendarDay(value);
 }
 
 function toIsoInstant(value: unknown): string {
@@ -50,6 +43,8 @@ export type DashboardHome = {
     source: string;
     documentDate?: string;
     createdAt: string;
+    title: string;
+    tags: string[];
   }>;
 };
 
@@ -126,7 +121,7 @@ export async function loadDashboardHome(userId: string, email: string): Promise<
       ORDER BY p.created_at DESC
     `,
     sql`
-      SELECT id, patient_id, record_type, source, document_date, created_at
+      SELECT id, patient_id, record_type, source, document_date, created_at, tags, data
       FROM (
         SELECT
           hr.id,
@@ -135,6 +130,8 @@ export async function loadDashboardHome(userId: string, email: string): Promise<
           hr.source,
           hr.document_date,
           hr.created_at,
+          hr.tags,
+          hr.data,
           ROW_NUMBER() OVER (
             PARTITION BY hr.patient_id
             ORDER BY COALESCE(hr.document_date, hr.created_at::date) DESC, hr.created_at DESC
@@ -164,6 +161,14 @@ export async function loadDashboardHome(userId: string, email: string): Promise<
       source: String(row.source || ''),
       documentDate: toIsoDay(row.document_date),
       createdAt: toIsoInstant(row.created_at),
+      tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+      title: reportTitle({
+        documentDate: row.document_date,
+        createdAt: row.created_at,
+        recordType: String(row.record_type || ''),
+        tags: row.tags,
+        data: row.data && typeof row.data === 'object' ? row.data as Record<string, unknown> : {},
+      }),
     })),
   };
 }

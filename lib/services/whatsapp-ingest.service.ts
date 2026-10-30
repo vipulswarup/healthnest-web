@@ -1,10 +1,11 @@
 import { sql } from '@/lib/db/neon';
-import { getDocumentById, updateDocumentStatus } from '@/lib/services/document.service';
-import { extractTextFromImage } from '@/lib/services/ocr.service';
+import { getDocumentById, updateDocumentStatus, syncDocumentFileName } from '@/lib/services/document.service';
+import { extractDocumentText } from '@/lib/services/document-text.service';
 import { analyzeDocument } from '@/lib/services/ai.service';
 import { getAllCategories } from '@/lib/services/category.service';
 import { notifyPatientHousehold } from '@/lib/services/device-push.service';
 import { sendWhatsAppText } from '@/lib/whatsapp/cloud-api';
+import { hasGroqAiConsent } from '@/lib/legal/groq-consent';
 
 function uniqueTags(tags: string[]): string[] {
   return Array.from(new Set(tags.map((t) => t.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean)));
@@ -46,13 +47,29 @@ export async function processWhatsAppIngest(inboundId: string): Promise<void> {
   const documentId = inbound.document_id ? String(inbound.document_id) : null;
   const textBody = typeof inbound.text_body === 'string' ? inbound.text_body : null;
 
+  const [familyOwner] = await sql`
+    SELECT h.created_by, COALESCE(d.owner_id, h.created_by) AS consent_owner
+    FROM households h
+    LEFT JOIN documents d ON d.id = ${documentId}::uuid
+    WHERE h.id = ${String(inbound.household_id)}::uuid LIMIT 1
+  `;
+  if (!familyOwner?.consent_owner || !await hasGroqAiConsent(String(familyOwner.consent_owner))) {
+    await sql`UPDATE whatsapp_inbound_messages SET status = 'filed', updated_at = NOW() WHERE id = ${inboundId}::uuid`;
+    return;
+  }
+
   try {
     let ocrText = textBody?.trim() || '';
     if (documentId) {
       const document = await getDocumentById(documentId);
       if (!document?.r2Key) throw new Error('Document missing storage key');
       await updateDocumentStatus(documentId, { ocrStatus: 'PROCESSING', aiStatus: 'PROCESSING' });
-      ocrText = await extractTextFromImage(document.r2Key, true, { mode: 'intake' });
+      ocrText = await extractDocumentText({
+        r2Key: document.r2Key,
+        fileType: document.fileType,
+        fileName: document.fileName,
+        patientId,
+      });
       await updateDocumentStatus(documentId, {
         ocrStatus: 'COMPLETED',
         ocrText,
@@ -69,6 +86,9 @@ export async function processWhatsAppIngest(inboundId: string): Promise<void> {
           documentDate: null as string | null,
           idType: null as string | null,
           expiryDate: null as string | null,
+          testType: null as string | null,
+          testTypes: [] as string[],
+          bodyPart: null as string | null,
           tags: [] as string[],
         }
       : await analyzeDocument(analysisInput);
@@ -81,6 +101,9 @@ export async function processWhatsAppIngest(inboundId: string): Promise<void> {
     ]);
 
     const data: Record<string, unknown> = {};
+    if (analysis.testType) data.testType = analysis.testType;
+    if (analysis.testTypes?.length) data.testTypes = analysis.testTypes;
+    if (analysis.bodyPart) data.bodyPart = analysis.bodyPart;
     if (recordType === 'ID_DOCUMENT') {
       if (analysis.idType) data.idType = analysis.idType;
       if (analysis.expiryDate) data.expiryDate = analysis.expiryDate;
@@ -115,6 +138,7 @@ export async function processWhatsAppIngest(inboundId: string): Promise<void> {
         isApproved: false,
         status: 'COMPLETED',
       });
+      await syncDocumentFileName(documentId).catch(() => undefined);
     }
 
     await sql`
@@ -185,6 +209,10 @@ export async function fileInboundForPatient(opts: {
   const documentId = inbound.document_id ? String(inbound.document_id) : null;
   const textBody = typeof inbound.text_body === 'string' ? inbound.text_body : null;
   const tags = ['whatsapp', 'needs_review'];
+  if (documentId) {
+    const { attachDocumentToPatient } = await import('@/lib/services/document.service');
+    await attachDocumentToPatient(documentId, patientId);
+  }
 
   const [record] = await sql`
     INSERT INTO health_records (

@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { verifyAppleIdentityToken } from '@/lib/auth/apple';
+import { randomUUID } from 'node:crypto';
+import { encryptSecret } from '@/lib/security/secret-box';
+import { verifyAppleIdentityToken, appleRevocationConfigured, exchangeAppleCode } from '@/lib/auth/apple';
 import { createMobileSession } from '@/lib/auth/mobile-session';
 import { sql } from '@/lib/db/neon';
 import { AppError, handleError } from '@/lib/middleware/error-handler';
 
 const schema = z.object({
   identityToken: z.string().min(20),
+  authorizationCode: z.string().min(1).optional(),
   fullName: z.string().max(160).optional().nullable(),
   email: z.string().email().optional().nullable(),
 });
@@ -23,7 +26,8 @@ export async function POST(request: NextRequest) {
     const identity = await verifyAppleIdentityToken(parsed.data.identityToken).catch(() => {
       throw new AppError('Apple sign-in could not be verified', 401);
     });
-    const email = identity.email || parsed.data.email?.trim().toLowerCase() || null;
+    // Never link to an existing account using a client-supplied email.
+    const email = identity.email;
     const name = parsed.data.fullName?.trim() || '';
 
     const [linked] = await sql`
@@ -39,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!userId) {
-      userId = `apple:${identity.sub}`;
+      userId = `apple:${randomUUID()}`;
       const { firstName, lastName } = splitName(name || (email ? email.split('@')[0] : 'Family member'));
       await sql`
         INSERT INTO profiles (user_id, first_name, last_name, email)
@@ -57,6 +61,11 @@ export async function POST(request: NextRequest) {
         user_id = EXCLUDED.user_id,
         email = COALESCE(EXCLUDED.email, apple_identities.email)
     `;
+
+    if (parsed.data.authorizationCode && appleRevocationConfigured()) {
+      const refreshToken = await exchangeAppleCode(parsed.data.authorizationCode, identity.sub);
+      await sql`UPDATE apple_identities SET refresh_token_ciphertext = ${encryptSecret(refreshToken)} WHERE apple_sub = ${identity.sub}`;
+    }
 
     const session = await createMobileSession(userId, 'apple');
     return NextResponse.json({ ...session, userId }, { status: 201 });

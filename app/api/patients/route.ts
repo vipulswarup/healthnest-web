@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         ${JSON.stringify(data.preferences || {})}::jsonb, ${JSON.stringify(data.hospitalIdentifiers || [])}::jsonb
       ) RETURNING *
     `;
-    await linkPatientToHousehold(data.householdId, patient.id);
+    await linkPatientToHousehold(data.householdId, patient.id, user.id);
     await recordAuditEvent({
       actorId: user.id,
       patientId: patient.id,

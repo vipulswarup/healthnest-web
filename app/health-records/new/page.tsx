@@ -2,13 +2,14 @@
 
 import { useSession } from '@/lib/auth/client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useState, useEffect, Suspense } from 'react';
+import { useCallback, useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import AppNav from '@/components/layout/AppNav';
 import { DEFAULT_TAGS } from '@/lib/constants/tags';
 import { ID_DOCUMENT_TAGS, ID_DOCUMENT_TYPES, resolveIdType } from '@/lib/constants/id-documents';
 import { DocumentUploader } from '@/components/documents/DocumentUploader';
+import { isOfficeFile } from '@/lib/documents/allowed-files';
 import { OCRProgress } from '@/components/documents/OCRProgress';
 import PersonPicker from '@/components/patients/PersonPicker';
 import { LabResultsEditor } from '@/components/lab/LabResultsEditor';
@@ -55,6 +56,11 @@ function NewHealthRecordContent() {
   }>>([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const pendingOfficeRef = useRef<File[]>([]);
+  const [savedPdfPasswords, setSavedPdfPasswords] = useState<string[]>([]);
+  const [pdfUnlockPassword, setPdfUnlockPassword] = useState('');
+  const [needsPdfPassword, setNeedsPdfPassword] = useState(false);
+  const pdfUnlockPasswordRef = useRef('');
   const [documentPreviewUrl, setDocumentPreviewUrl] = useState<string | null>(null);
   const [documentDownloadUrl, setDocumentDownloadUrl] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
@@ -126,6 +132,26 @@ function NewHealthRecordContent() {
       setError(err instanceof Error ? err.message : 'An error occurred');
     }
   }, [patientId]);
+
+  useEffect(() => {
+    if (!formData.patientId) {
+      setSavedPdfPasswords([]);
+      return;
+    }
+    let active = true;
+    void fetch(`/api/patients/${formData.patientId}/file-passwords`)
+      .then(async (response) => (response.ok ? response.json() : []))
+      .then((rows) => {
+        if (!active || !Array.isArray(rows)) return;
+        setSavedPdfPasswords(rows.map((row: { password?: string }) => String(row.password || '')).filter(Boolean));
+      })
+      .catch(() => {
+        if (active) setSavedPdfPasswords([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [formData.patientId]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -344,6 +370,7 @@ function NewHealthRecordContent() {
       updateQueueItem(item.localId, { status: 'uploading', error: undefined });
       const formPayload = new FormData();
       formPayload.append('file', item.file);
+      if (formData.patientId) formPayload.append('patientId', formData.patientId);
       const uploadRes = await fetch('/api/documents/upload', {
         method: 'POST',
         body: formPayload,
@@ -369,11 +396,22 @@ function NewHealthRecordContent() {
   };
 
   const handleFilesSelected = (files: File[]) => {
-    setPendingFiles(files);
+    const office = files.filter(isOfficeFile);
+    const rest = files.filter((file) => !isOfficeFile(file));
+    if (rest.length === 0) {
+      pendingOfficeRef.current = [];
+      startPreparedQueue(office);
+      return;
+    }
+    pendingOfficeRef.current = office;
+    setPendingFiles(rest);
   };
 
   const startPreparedQueue = (files: File[]) => {
-    const items = files.map((file) => ({
+    const extra = pendingOfficeRef.current;
+    pendingOfficeRef.current = [];
+    const all = [...extra, ...files];
+    const items = all.map((file) => ({
       localId: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       fileName: file.name,
@@ -382,6 +420,9 @@ function NewHealthRecordContent() {
     setPendingFiles(null);
     setFileQueue(items);
     setSavedCount(0);
+    setPdfUnlockPassword('');
+    setNeedsPdfPassword(false);
+    pdfUnlockPasswordRef.current = '';
     void processQueueItem(0, items);
   };
 
@@ -414,15 +455,40 @@ function NewHealthRecordContent() {
       const ocrRes = await fetch('/api/ocr/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId }),
+        body: JSON.stringify({
+          documentId,
+          extraPasswords: pdfUnlockPasswordRef.current.trim() ? [pdfUnlockPasswordRef.current.trim()] : undefined,
+        }),
       });
       
       const ocrPayload = await ocrRes.json().catch(() => ({}));
       if (!ocrRes.ok) {
+        if (ocrPayload.code === 'GROQ_AI_DISABLED') {
+          setOcrStatus('COMPLETED');
+          setAiStatus('COMPLETED');
+          setOcrText('');
+          setAiResults(null);
+          setOcrError('AI processing is off. You can continue and enter the record details manually.');
+          return;
+        }
         setOcrStatus('FAILED');
+        if (ocrPayload.code === 'PDF_PASSWORD_REQUIRED') {
+          setNeedsPdfPassword(true);
+          const message = 'This PDF is password protected. Enter the password from the lab.';
+          setOcrError(message);
+          throw new Error(message);
+        }
         const message = ocrPayload.error || ocrPayload.message || 'OCR failed';
         setOcrError(message);
         throw new Error(message);
+      }
+
+      if (pdfUnlockPasswordRef.current.trim()) {
+        const used = pdfUnlockPasswordRef.current.trim();
+        setSavedPdfPasswords((current) => current.includes(used) ? current : [...current, used]);
+        pdfUnlockPasswordRef.current = '';
+        setPdfUnlockPassword('');
+        setNeedsPdfPassword(false);
       }
 
       const extractedText = typeof ocrPayload.text === 'string' ? ocrPayload.text : '';
@@ -692,6 +758,9 @@ function NewHealthRecordContent() {
     if (!documentPreviewUrl) return null;
     const previewName = uploadedDocument?.fileName || currentQueueItem?.fileName || '';
     const isPdf = previewName.toLowerCase().endsWith('.pdf') || currentQueueItem?.file.type === 'application/pdf';
+    const isOffice = currentQueueItem?.file
+      ? isOfficeFile(currentQueueItem.file)
+      : /\.(docx?|xlsx?|pptx?)$/i.test(previewName);
     const frameClass =
       variant === 'large'
         ? 'w-full h-[min(78vh,56rem)] min-h-[28rem] bg-white'
@@ -715,7 +784,11 @@ function NewHealthRecordContent() {
             Open full size
           </a>
         </div>
-        {isPdf ? (
+        {isOffice ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-600">
+            Preview is not available for Office files. The original file is stored in the vault.
+          </div>
+        ) : isPdf ? (
           <iframe title="Document preview" src={documentPreviewUrl} className={frameClass} />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
@@ -764,7 +837,7 @@ function NewHealthRecordContent() {
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Add the document</h3>
         <p className="text-sm text-gray-600 mb-6">
-          Take a photo of the paper, or choose a file saved from WhatsApp.
+          Take a photo of the paper, or choose a PDF, photo, or Microsoft Office file.
         </p>
       </div>
 
@@ -774,8 +847,24 @@ function NewHealthRecordContent() {
         <DocumentPrepare
           files={pendingFiles}
           dateOfBirth={selectedPerson?.dateOfBirth}
-          onCancel={() => setPendingFiles(null)}
+          extraPasswords={savedPdfPasswords}
+          onCancel={() => {
+            pendingOfficeRef.current = [];
+            setPendingFiles(null);
+          }}
           onReady={startPreparedQueue}
+          onUnlockedWithPassword={(password) => {
+            if (!formData.patientId || !password.trim()) return;
+            void fetch(`/api/patients/${formData.patientId}/file-passwords`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: password.trim() }),
+            }).then((response) => {
+              if (response.ok) {
+                setSavedPdfPasswords((current) => current.includes(password.trim()) ? current : [...current, password.trim()]);
+              }
+            }).catch(() => undefined);
+          }}
         />
       ) : !uploadedDocument && fileQueue.length === 0 ? (
         <DocumentUploader multiple onFilesSelected={handleFilesSelected} />
@@ -821,10 +910,33 @@ function NewHealthRecordContent() {
             </div>
           )}
 
-          {(ocrStatus === 'FAILED' || aiStatus === 'FAILED') && (
+          {(ocrStatus === 'FAILED' || aiStatus === 'FAILED') && !needsPdfPassword && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800">Automatic extraction had an issue. You can still continue and fill details manually.</p>
             </div>
+          )}
+
+          {needsPdfPassword ? (
+            <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="queued-pdf-password">
+                PDF password
+              </label>
+              <input
+                id="queued-pdf-password"
+                type="text"
+                autoComplete="off"
+                value={pdfUnlockPassword}
+                onChange={(event) => {
+                  pdfUnlockPasswordRef.current = event.target.value;
+                  setPdfUnlockPassword(event.target.value);
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5"
+              />
+            </div>
+          ) : null}
+
+          {ocrError.includes('AI processing is off') && (
+            <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">AI processing is off for your account. This file stays in SanoVault; enter its details manually or enable Groq AI in <a className="underline" href="/settings/ai">Settings</a>.</p>
           )}
 
           {currentQueueItem?.status === 'failed' && (
@@ -832,9 +944,10 @@ function NewHealthRecordContent() {
               <button
                 type="button"
                 onClick={handleRetryCurrent}
-                className="px-4 py-2 rounded-lg font-medium bg-coral text-white hover:bg-coral-strong"
+                disabled={needsPdfPassword && !pdfUnlockPassword.trim()}
+                className="px-4 py-2 rounded-lg font-medium bg-coral text-white hover:bg-coral-strong disabled:opacity-50"
               >
-                Retry this file
+                {needsPdfPassword ? 'Unlock and retry' : 'Retry this file'}
               </button>
               {hasMoreInQueue && (
                 <button

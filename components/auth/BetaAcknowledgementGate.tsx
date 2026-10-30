@@ -11,6 +11,7 @@ export default function BetaAcknowledgementGate() {
   if (
     pathname === '/'
     || pathname === '/privacy'
+    || pathname === '/delete-account'
     || pathname === '/pricing'
     || pathname === '/dashboard'
     || pathname === ACKNOWLEDGEMENT_PATH

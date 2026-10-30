@@ -1,5 +1,5 @@
 import { sendBrevoEmail } from '@/lib/email/brevo';
-import { documentShareEmailContent, householdInviteEmailContent } from '@/lib/email/templates';
+import { careShareEmailContent, documentShareEmailContent, householdInviteEmailContent } from '@/lib/email/templates';
 
 export async function sendHouseholdInviteEmail(input: {
   to: string;
@@ -28,6 +28,21 @@ export async function sendDocumentShareEmail(input: {
   return sendBrevoEmail({
     to: input.to,
     toName: input.recipientName,
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
+  });
+}
+
+export async function sendCareShareEmail(input: {
+  to: string;
+  shareUrl: string;
+  fromName: string;
+  label?: string | null;
+}): Promise<{ sent: boolean; error?: string }> {
+  const content = careShareEmailContent(input);
+  return sendBrevoEmail({
+    to: input.to,
     subject: content.subject,
     html: content.html,
     text: content.text,

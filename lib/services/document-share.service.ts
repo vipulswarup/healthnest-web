@@ -1,11 +1,17 @@
 import { randomBytes } from 'crypto';
 import { sql } from '@/lib/db/neon';
 import { canAccessDocument } from '@/lib/households/access';
+import { getDocumentDownloadName, syncDocumentFileName } from '@/lib/services/document.service';
 
 const DEFAULT_SHARE_DAYS = 7;
+export const MIN_SHARE_TOKEN_LENGTH = 8;
 
 export function generateShareToken(): string {
-  return randomBytes(32).toString('hex');
+  return randomBytes(8).toString('base64url');
+}
+
+export function isShareTokenShape(token: string): boolean {
+  return new RegExp(`^[A-Za-z0-9_-]{${MIN_SHARE_TOKEN_LENGTH},80}$`).test(token);
 }
 
 export type DocumentShareRow = {
@@ -37,6 +43,10 @@ function toShare(row: Record<string, unknown>): DocumentShareRow {
 function isActiveShare(row: DocumentShareRow): boolean {
   if (row.revokedAt) return false;
   return new Date(row.expiresAt).getTime() > Date.now();
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505');
 }
 
 export async function getActiveDocumentShare(documentId: string): Promise<DocumentShareRow | null> {
@@ -74,20 +84,29 @@ export async function createDocumentShare({
       AND revoked_at IS NULL
   `;
 
-  const token = generateShareToken();
+  await syncDocumentFileName(documentId).catch(() => undefined);
+
   const days = Math.min(Math.max(expiresInDays, 1), 30);
-  const [created] = await sql`
-    INSERT INTO document_shares (document_id, token, created_by, label, expires_at)
-    VALUES (
-      ${documentId}::uuid,
-      ${token},
-      ${userId},
-      ${label || null},
-      NOW() + (${days}::int * INTERVAL '1 day')
-    )
-    RETURNING id, document_id, token, label, expires_at, revoked_at, created_at
-  `;
-  return toShare(created);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const token = generateShareToken();
+    try {
+      const [created] = await sql`
+        INSERT INTO document_shares (document_id, token, created_by, label, expires_at)
+        VALUES (
+          ${documentId}::uuid,
+          ${token},
+          ${userId},
+          ${label || null},
+          NOW() + (${days}::int * INTERVAL '1 day')
+        )
+        RETURNING id, document_id, token, label, expires_at, revoked_at, created_at
+      `;
+      return toShare(created);
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt === 4) throw error;
+    }
+  }
+  throw new Error('Could not create a share link');
 }
 
 export async function revokeDocumentShare(documentId: string, userId: string): Promise<boolean> {
@@ -119,5 +138,6 @@ export async function getPublicDocumentShare(token: string): Promise<(DocumentSh
   if (!row || !row.r2_key) return null;
   const share = toShare(row);
   if (!isActiveShare(share)) return null;
-  return { ...share, r2Key: String(row.r2_key) };
+  const fileName = await getDocumentDownloadName(String(row.document_id)).catch(() => share.fileName);
+  return { ...share, fileName: fileName || share.fileName, r2Key: String(row.r2_key) };
 }

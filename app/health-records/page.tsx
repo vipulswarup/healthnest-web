@@ -13,6 +13,7 @@ import { HealthcareSource } from '@/lib/types/healthcare-source.types';
 import { humanizeLabel } from '@/lib/constants/labels';
 import { getLastPatientId, setLastPatientId } from '@/lib/patients/last-used';
 import { svBtnOutline, svBtnPrimary } from '@/lib/ui/buttons';
+import { formatCalendarDay, toCalendarDay } from '@/lib/dates/calendar-date';
 
 interface HealthRecord {
   id: string;
@@ -24,6 +25,7 @@ interface HealthRecord {
   createdAt: string;
   tags: string[];
   documentId?: string;
+  title?: string;
 }
 
 interface Patient {
@@ -59,15 +61,31 @@ function HealthRecordsContent() {
   );
   const [recordPendingDelete, setRecordPendingDelete] = useState<string | null>(null);
 
+  // Keep filter state aligned with URL (Needs review / deep links update searchParams only).
+  useEffect(() => {
+    setKeyword(searchParams.get('keyword') || '');
+    setFilterSource(searchParams.get('source') || '');
+    setFilterRecordType(searchParams.get('recordType') || '');
+    setFilterTag(searchParams.get('tag') || '');
+    setStartDate(searchParams.get('startDate') || '');
+    setEndDate(searchParams.get('endDate') || '');
+    if (['source', 'recordType', 'tag', 'startDate', 'endDate'].some((key) => searchParams.has(key))) {
+      setShowFilters(true);
+    }
+    const patientFromUrl = searchParams.get('patientId') || '';
+    if (patientFromUrl) setSelectedPatientId(patientFromUrl);
+  }, [searchParams]);
+
+  // Prefer Next searchParams over window.location — router.replace does not update the latter synchronously.
   const updateQuery = useCallback((updates: Record<string, string>) => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
       if (value) params.set(key, value);
       else params.delete(key);
     });
     const query = params.toString();
     router.replace(query ? `/health-records?${query}` : '/health-records', { scroll: false });
-  }, [router]);
+  }, [router, searchParams]);
 
   const getRecordTypeLabel = (code: string): string => {
     const category = categories.find(cat => cat.code === code);
@@ -99,9 +117,11 @@ function HealthRecordsContent() {
   }, []);
 
   useEffect(() => {
+    const urlKeyword = searchParams.get('keyword') || '';
+    if (keyword === urlKeyword) return;
     const timeoutId = window.setTimeout(() => updateQuery({ keyword }), 300);
     return () => window.clearTimeout(timeoutId);
-  }, [keyword, updateQuery]);
+  }, [keyword, searchParams, updateQuery]);
 
   const fetchPatients = useCallback(async () => {
     try {
@@ -135,29 +155,23 @@ function HealthRecordsContent() {
   const fetchRecords = useCallback(async () => {
     try {
       setRecordsLoading(true);
+      // URL is the source of truth for filters (avoids Needs review state/URL races).
+      const tag = searchParams.get('tag') || '';
+      const source = searchParams.get('source') || '';
+      const recordType = searchParams.get('recordType') || '';
+      const keywordParam = searchParams.get('keyword') || '';
+      const start = searchParams.get('startDate') || '';
+      const end = searchParams.get('endDate') || '';
+      const patientFromUrl = searchParams.get('patientId') || selectedPatientId;
       const params = new URLSearchParams();
-      
-      if (selectedPatientId) {
-        params.append('patientId', selectedPatientId);
-      }
-      if (keyword) {
-        params.append('keyword', keyword);
-      }
-      if (filterSource) {
-        params.append('source', filterSource);
-      }
-      if (filterRecordType) {
-        params.append('recordType', filterRecordType);
-      }
-      if (filterTag) {
-        params.append('tag', filterTag);
-      }
-      if (startDate) {
-        params.append('startDate', startDate);
-      }
-      if (endDate) {
-        params.append('endDate', endDate);
-      }
+
+      if (patientFromUrl) params.append('patientId', patientFromUrl);
+      if (keywordParam) params.append('keyword', keywordParam);
+      if (source) params.append('source', source);
+      if (recordType) params.append('recordType', recordType);
+      if (tag) params.append('tag', tag);
+      if (start) params.append('startDate', start);
+      if (end) params.append('endDate', end);
 
       const response = await fetch(`/api/health-records?${params.toString()}`);
       if (!response.ok) {
@@ -170,7 +184,7 @@ function HealthRecordsContent() {
     } finally {
       setRecordsLoading(false);
     }
-  }, [endDate, filterRecordType, filterSource, filterTag, keyword, selectedPatientId, startDate]);
+  }, [searchParams, selectedPatientId]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -184,11 +198,8 @@ function HealthRecordsContent() {
   }, [fetchCategories, fetchPatients, fetchSources, router, session?.user?.id, status]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      void fetchRecords();
-    }, keyword ? 300 : 0);
-    return () => clearTimeout(timeoutId);
-  }, [fetchRecords, keyword]);
+    void fetchRecords();
+  }, [fetchRecords]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -246,6 +257,13 @@ function HealthRecordsContent() {
   }
 
   const formatDate = (dateString: string) => {
+    if (toCalendarDay(dateString)) {
+      return formatCalendarDay(dateString, 'en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
     try {
       return new Intl.DateTimeFormat('en-IN', {
         day: 'numeric',
@@ -266,12 +284,13 @@ function HealthRecordsContent() {
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-3xl font-bold text-ink">Reports</h1>
             <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/health-records?tag=needs_review"
+              <button
+                type="button"
+                onClick={() => handleTagClick('needs_review')}
                 className={`inline-flex min-h-12 items-center text-base font-medium ${filterTag === 'needs_review' ? 'text-ink underline' : 'text-coral hover:underline'}`}
               >
                 Needs review
-              </Link>
+              </button>
               <Link
                 href={selectedPatientId ? `/reports/blood-summary?patientId=${selectedPatientId}` : '/reports/blood-summary'}
                 className="inline-flex min-h-12 items-center text-base font-medium text-coral hover:underline"
@@ -613,7 +632,7 @@ function HealthRecordsContent() {
                       <li key={record.id} className="flex items-start gap-3 px-4 py-3">
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-gray-950">
-                            {getRecordTypeLabel(record.recordType)}
+                            {record.title || getRecordTypeLabel(record.recordType)}
                             {record.documentId ? (
                               <span className="ml-2 text-xs font-normal text-coral">File</span>
                             ) : null}

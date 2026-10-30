@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
-import { SITE_NAME } from '@/lib/site';
+import { MarketingShell } from '@/components/marketing/MarketingShell';
 
 export const metadata: Metadata = {
   title: 'Pricing',
@@ -17,19 +16,7 @@ export const metadata: Metadata = {
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-white text-ink">
-      <header className="border-b border-silver/70">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-4 px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="" width={40} height={40} className="rounded-full" />
-            <span className="text-lg font-bold tracking-tight">{SITE_NAME}</span>
-          </Link>
-          <Link href="/auth/signup" className="text-sm font-medium text-coral hover:underline">
-            Get started
-          </Link>
-        </div>
-      </header>
-
+    <MarketingShell>
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
         <p className="text-sm font-semibold uppercase tracking-wide text-coral">Beta</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight">Pricing</h1>
@@ -70,6 +57,6 @@ export default function PricingPage() {
           <Link href="/privacy" className="text-coral hover:underline">Privacy</Link>
         </p>
       </main>
-    </div>
+    </MarketingShell>
   );
 }

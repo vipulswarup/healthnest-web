@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       throw new AppError('Patient not found', 404);
     }
 
-    await linkPatientToHousehold(parsedId.data, parsed.data.patientId);
+    await linkPatientToHousehold(parsedId.data, parsed.data.patientId, user.id);
     return NextResponse.json({ message: 'Patient linked' }, { status: 201 });
   } catch (error) {
     return handleError(error);

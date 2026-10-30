@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getCurrentUser } from '@/lib/auth/session';
 import { canAccessDocument } from '@/lib/households/access';
 import { getR2SignedUrl } from '@/lib/r2';
-import { getDocumentById } from '@/lib/services/document.service';
+import { getDocumentById, getDocumentDownloadName } from '@/lib/services/document.service';
 import { needsBrowserPreviewConversion } from '@/lib/images/normalize';
 import { handleError, AppError } from '@/lib/middleware/error-handler';
 
@@ -24,8 +24,9 @@ export async function POST(request: NextRequest) {
     const url = needsBrowserPreviewConversion(document.fileType)
       ? `/api/documents/preview?documentId=${encodeURIComponent(documentId)}`
       : downloadUrl;
+    const fileName = await getDocumentDownloadName(documentId);
     return NextResponse.json(
-      { url, downloadUrl, fileName: document.fileName, fileType: document.fileType },
+      { url, downloadUrl, fileName, fileType: document.fileType },
       {
         headers: {
           'Cache-Control': 'private, no-store',

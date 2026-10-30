@@ -4,6 +4,7 @@ import { AppError, handleError } from '@/lib/middleware/error-handler';
 import { medicationCountrySchema } from '@/lib/medications/schemas';
 import { extractMedicationFromPhoto } from '@/lib/services/medication-extract.service';
 import { enforceHourlyRateLimit } from '@/lib/security/rate-limit';
+import { requireGroqAiConsent } from '@/lib/legal/groq-consent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
 
     await enforceHourlyRateLimit(user.id, 'ocr-intake');
     await enforceHourlyRateLimit(user.id, 'ai');
+    await requireGroqAiConsent(user.id);
 
     const formData = await request.formData();
     const file = formData.get('file');

@@ -3,6 +3,7 @@ import { after, NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db/neon';
 import { uploadToR2 } from '@/lib/r2';
 import { createDocument } from '@/lib/services/document.service';
+import { sha256Hex } from '@/lib/security/checksum';
 import { verifyUploadSignature } from '@/lib/security/file-signature';
 import {
   fileInboundForPatient,
@@ -206,23 +207,29 @@ async function handleMediaOrText(message: WhatsAppMessage, householdId: string):
 
   const bytes = await downloadMediaById(media.id);
   const mimeGuess = media.mime_type || 'application/pdf';
-  const verified = verifyUploadSignature(bytes, mimeGuess);
+  const verified = verifyUploadSignature(
+    bytes,
+    mimeGuess,
+    ('filename' in media && media.filename) ? String(media.filename) : undefined,
+  );
   if (!verified) {
-    await sendWhatsAppText(fromPhone, 'That file type cannot be stored. Send a PDF or photo.');
+    await sendWhatsAppText(fromPhone, 'That file type cannot be stored. Send a PDF, photo, or Office file.');
     return;
   }
 
-  const storageKey = `${ownerId}/${randomUUID()}.${verified.extension}`;
-  await uploadToR2(storageKey, bytes, verified.mimeType);
   const filename = ('filename' in media && media.filename)
     ? String(media.filename)
     : `whatsapp.${verified.extension}`;
+
+  const storageKey = `${ownerId}/${randomUUID()}.${verified.extension}`;
+  await uploadToR2(storageKey, bytes, verified.mimeType);
   const document = await createDocument({
     userId: ownerId,
     fileName: filename,
     fileSize: bytes.length,
     fileType: verified.mimeType,
     r2Key: storageKey,
+    checksumSha256: sha256Hex(bytes),
   });
   const documentId = document.id || document._id;
   const caption = ('caption' in media && media.caption) ? String(media.caption) : null;

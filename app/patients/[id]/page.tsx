@@ -5,7 +5,10 @@ import { useRouter, useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { useHouseholdContext } from '@/components/households/useHouseholdContext';
 import AppNav from '@/components/layout/AppNav';
+import { FilePasswordManager } from '@/components/patients/FilePasswordManager';
 
 interface EmergencyContact {
   name: string;
@@ -33,6 +36,7 @@ interface HealthRecord {
   createdAt: string;
   documentId?: string;
   data: Record<string, unknown>;
+  title?: string;
 }
 
 export default function PatientDetailPage() {
@@ -40,6 +44,20 @@ export default function PatientDetailPage() {
   const router = useRouter();
   const params = useParams();
   const patientId = params.id as string;
+  const { householdId, households } = useHouseholdContext();
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  async function removePatient() {
+    if (!householdId) return;
+    setRemoving(true);
+    try {
+      const response = await fetch(`/api/households/${householdId}/patients/${patientId}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not remove patient');
+      router.push('/patients');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not remove patient'); setRemoveOpen(false); }
+    finally { setRemoving(false); }
+  }
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [healthRecords, setHealthRecords] = useState<HealthRecord[]>([]);
@@ -127,6 +145,9 @@ export default function PatientDetailPage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <AppNav />
+      <ConfirmDialog open={removeOpen} title={`Remove from ${households.find(h => h.id === householdId)?.name || 'this family'}?`}
+        description="This family loses access. If no other family has this patient, their profile and all records are permanently deleted. Records shared with another family remain there. Login accounts are not deleted."
+        confirmLabel="Remove patient" busy={removing} onCancel={() => setRemoveOpen(false)} onConfirm={removePatient} />
         <main className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
             <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -147,6 +168,9 @@ export default function PatientDetailPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <AppNav />
+      <ConfirmDialog open={removeOpen} title={`Remove from ${households.find(h => h.id === householdId)?.name || 'this family'}?`}
+        description="This family loses access. If no other family has this patient, their profile and all records are permanently deleted. Records shared with another family remain there. Login accounts are not deleted."
+        confirmLabel="Remove patient" busy={removing} onCancel={() => setRemoveOpen(false)} onConfirm={removePatient} />
 
       <main className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
@@ -158,6 +182,7 @@ export default function PatientDetailPage() {
               ← Back to family
             </Link>
             <div className="flex flex-wrap gap-2">
+              <button disabled={!householdId || removing} onClick={() => setRemoveOpen(true)} className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-700 disabled:opacity-50">Remove from this family</button>
               <Link
                 href={`/medications?patientId=${patientId}`}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -233,15 +258,27 @@ export default function PatientDetailPage() {
             </div>
           </div>
 
+          <div className="mb-6">
+            <FilePasswordManager patientId={patientId} />
+          </div>
+
           <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
               <h3 className="text-xl font-bold text-gray-900">Reports</h3>
-              <Link
-                href={`/health-records/new?patientId=${patientId}`}
-                className="sv-btn sv-btn-primary"
-              >
-                Add a Report
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/api/patients/${patientId}/export`}
+                  className="sv-btn sv-btn-outline"
+                >
+                  Download zip export
+                </a>
+                <Link
+                  href={`/health-records?patientId=${patientId}`}
+                  className="sv-btn sv-btn-outline"
+                >
+                  Open Reports
+                </Link>
+              </div>
             </div>
 
             {recordsLoading ? (
@@ -251,13 +288,7 @@ export default function PatientDetailPage() {
               </div>
             ) : healthRecords.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <p>No reports yet</p>
-                <Link
-                  href={`/health-records/new?patientId=${patientId}`}
-                  className="mt-4 inline-block text-coral hover:text-coral-strong"
-                >
-                  Add a Report
-                </Link>
+                <p>No reports yet. Add one from the Reports tab.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -270,7 +301,7 @@ export default function PatientDetailPage() {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-2">
                           <h4 className="font-semibold text-gray-900">
-                            {getRecordTypeLabel(record.recordType)}
+                            {record.title || getRecordTypeLabel(record.recordType)}
                           </h4>
                           <span className="text-sm text-gray-500">•</span>
                           <span className="text-sm text-gray-600">{record.source}</span>

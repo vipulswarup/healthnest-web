@@ -1,14 +1,14 @@
 import { appBaseUrl } from '@/lib/site';
 
 const BRAND = {
-  primary: '#EF8354',
-  primaryDark: '#D96C3D',
-  ink: '#2D3142',
-  muted: '#4F5D75',
-  soft: '#F4F4F5',
-  border: '#BFC0C0',
+  primary: '#165FCF',
+  primaryDark: '#104CA9',
+  ink: '#362F2F',
+  muted: '#625D66',
+  soft: '#F3F2F3',
+  border: '#CDD1D9',
   white: '#ffffff',
-  footer: '#4F5D75',
+  footer: '#625D66',
 };
 
 export { appBaseUrl };
@@ -231,5 +231,42 @@ export function documentShareEmailContent(input: {
     `Open record: ${input.shareUrl}`,
   ].join('\n');
 
+  return { subject, html, text };
+}
+
+export function careShareEmailContent(input: {
+  fromName: string;
+  shareUrl: string;
+  label?: string | null;
+}): { subject: string; html: string; text: string } {
+  const fromName = escapeHtml(input.fromName);
+  const label = escapeHtml(input.label?.trim() || 'patient health records');
+  const subject = `${input.fromName} shared health records with you on SanoVault`;
+  const bodyHtml = `
+    <p style="margin:0 0 14px;">Hello,</p>
+    <p style="margin:0 0 14px;">
+      <strong style="color:${BRAND.ink};">${fromName}</strong> invited you to view ${label} on SanoVault.
+    </p>
+    <p style="margin:0 0 14px;font-size:14px;color:${BRAND.muted};">
+      Access is view-only. The link stays valid until they revoke it.
+    </p>
+    <p style="margin:18px 0 0;font-size:13px;color:${BRAND.footer};">
+      Button not working? Paste this link into your browser:<br />
+      <a href="${escapeHtml(input.shareUrl)}" style="color:${BRAND.primary};word-break:break-all;">${escapeHtml(input.shareUrl)}</a>
+    </p>
+  `;
+  const html = renderSystemEmail({
+    preheader: `${input.fromName} shared health records with you.`,
+    title: 'View shared health records',
+    bodyHtml,
+    cta: { label: 'Open records', url: input.shareUrl },
+    footerNote: 'This link is private. Do not forward unless the sender intended you to share it.',
+  });
+  const text = [
+    `${input.fromName} invited you to view ${input.label?.trim() || 'patient health records'} on SanoVault.`,
+    'Access is view-only and stays valid until revoked.',
+    '',
+    `Open records: ${input.shareUrl}`,
+  ].join('\n');
   return { subject, html, text };
 }

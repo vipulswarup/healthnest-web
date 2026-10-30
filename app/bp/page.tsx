@@ -8,7 +8,7 @@ import { BloodPressureWeek } from '@/components/vitals/BloodPressureWeek';
 import { useHouseholdContext } from '@/components/households/useHouseholdContext';
 import { useSession } from '@/lib/auth/client';
 import { getLastPatientId, setLastPatientId } from '@/lib/patients/last-used';
-import { inferPeriod, periodLabel, type BpDaySlot, type BpPeriod } from '@/lib/vitals/blood-pressure';
+import { inferPeriod, periodLabel, type BloodPressureReading, type BpDaySlot, type BpPeriod } from '@/lib/vitals/blood-pressure';
 
 type Patient = { id: string; firstName: string; lastName?: string };
 
@@ -27,6 +27,7 @@ function LogBpContent() {
   const [selectedId, setSelectedId] = useState<string | null>(requestedId || null);
   const [lastPatientId, setLastPatientIdState] = useState<string | null>(null);
   const [days, setDays] = useState<BpDaySlot[]>([]);
+  const [readings, setReadings] = useState<BloodPressureReading[]>([]);
   const [period, setPeriod] = useState<BpPeriod>(inferPeriod());
   const [systolic, setSystolic] = useState('');
   const [diastolic, setDiastolic] = useState('');
@@ -72,9 +73,10 @@ function LogBpContent() {
     setError('');
     try {
       const response = await fetch(`/api/vitals/blood-pressure?patientId=${patientId}`);
-      const data = await response.json() as { days?: BpDaySlot[]; error?: string };
+      const data = await response.json() as { days?: BpDaySlot[]; readings?: BloodPressureReading[]; error?: string };
       if (!response.ok) throw new Error(data.error || 'Could not load blood pressure');
       setDays(data.days || []);
+      setReadings(data.readings || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load blood pressure');
     } finally {
@@ -121,9 +123,10 @@ function LogBpContent() {
           period,
         }),
       });
-      const data = await response.json() as { days?: BpDaySlot[]; error?: string };
+      const data = await response.json() as { days?: BpDaySlot[]; readings?: BloodPressureReading[]; error?: string };
       if (!response.ok) throw new Error(data.error || 'Could not save');
       setDays(data.days || []);
+      setReadings(data.readings || []);
       setSystolic('');
       setDiastolic('');
       setPulse('');
@@ -176,7 +179,7 @@ function LogBpContent() {
                         onClick={() => setPeriod(value)}
                         className={`min-h-12 rounded-xl border px-3 text-base font-medium ${
                           period === value
-                            ? 'border-coral bg-blue-50 text-[#D96C3D]'
+                            ? 'border-brand bg-brand-tint text-brand-strong'
                             : 'border-gray-300 bg-white text-gray-800'
                         }`}
                       >
@@ -237,7 +240,7 @@ function LogBpContent() {
             ) : null}
 
             <div className="mt-10">
-              {loading ? <p className="text-gray-600" role="status">Loading week…</p> : <BloodPressureWeek days={days} />}
+              {loading ? <p className="text-gray-600" role="status">Loading week…</p> : <BloodPressureWeek days={days} readings={readings} onChanged={() => selectedId && void loadWeek(selectedId)} />}
             </div>
           </>
         )}

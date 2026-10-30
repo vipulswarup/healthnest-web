@@ -24,7 +24,12 @@ export async function GET(request: NextRequest) {
       throw new AppError('A valid patient ID is required', 400);
     }
 
-    const week = await listBloodPressureWeek(user.id, patientId);
+    const requestedDays = Number(request.nextUrl.searchParams.get('days'));
+    const week = await listBloodPressureWeek(
+      user.id,
+      patientId,
+      Number.isFinite(requestedDays) && requestedDays > 0 ? requestedDays : undefined,
+    );
     if (!week) throw new AppError('Patient not found', 404);
     return NextResponse.json(week);
   } catch (error) {

@@ -6,6 +6,7 @@ import { handleError, AppError } from '@/lib/middleware/error-handler';
 import { sql } from '@/lib/db/neon';
 import { formatDoctorDisplay, matchDoctorName } from '@/lib/doctors/normalize';
 import { enforceHourlyRateLimit } from '@/lib/security/rate-limit';
+import { requireGroqAiConsent } from '@/lib/legal/groq-consent';
 
 function limitToFirstNWords(text: string, maxWords: number): string {
     if (!text || text.trim().length === 0) {
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
             throw new AppError('Unauthorized', 401);
         }
         await enforceHourlyRateLimit(user.id, 'ai');
+        await requireGroqAiConsent(user.id);
 
         const { documentId } = await request.json();
 

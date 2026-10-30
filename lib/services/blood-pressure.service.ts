@@ -9,7 +9,14 @@ import {
   type BpPeriod,
 } from '@/lib/vitals/blood-pressure';
 
-export async function listBloodPressureWeek(userId: string, patientId: string): Promise<{
+export const BP_DEFAULT_HISTORY_DAYS = 8;
+export const BP_MAX_HISTORY_DAYS = 365;
+
+export async function listBloodPressureWeek(
+  userId: string,
+  patientId: string,
+  historyDays: number = BP_DEFAULT_HISTORY_DAYS,
+): Promise<{
   readings: BloodPressureReading[];
   days: BpDaySlot[];
   lines: string[];
@@ -17,16 +24,17 @@ export async function listBloodPressureWeek(userId: string, patientId: string): 
   const patient = await getAccessiblePatient(userId, patientId);
   if (!patient) return null;
 
+  const days = Math.min(Math.max(Math.trunc(historyDays) || BP_DEFAULT_HISTORY_DAYS, 1), BP_MAX_HISTORY_DAYS);
   const rows = await sql`
     SELECT id, patient_id, recorded_at, period, systolic, diastolic, pulse, source, external_id, vault_owned
     FROM blood_pressure_readings
     WHERE patient_id = ${patientId}::uuid
-      AND recorded_at >= (NOW() - INTERVAL '8 days')
+      AND recorded_at >= (NOW() - make_interval(days => ${days}::int))
     ORDER BY recorded_at DESC
   `;
   const readings = rows.map(toBloodPressureReading);
-  const days = groupReadingsByDay(readings);
-  return { readings, days, lines: packetBpLines(days) };
+  const slots = groupReadingsByDay(readings);
+  return { readings, days: slots, lines: packetBpLines(slots) };
 }
 
 export async function createBloodPressureReading(options: {
@@ -114,4 +122,57 @@ export async function syncBloodPressureFromHealth(options: {
     vaultOwned: false,
   });
   return reading ? { reading, skipped: false } : null;
+}
+
+async function getEditableReading(userId: string, readingId: string) {
+  const [row] = await sql`
+    SELECT br.id, br.patient_id, br.vault_owned, br.source
+    FROM blood_pressure_readings br
+    WHERE br.id = ${readingId}::uuid
+      AND EXISTS (
+        SELECT 1 FROM household_patients hp
+        INNER JOIN household_members hm ON hm.household_id = hp.household_id AND hm.user_id = ${userId}
+        WHERE hp.patient_id = br.patient_id
+      )
+    LIMIT 1
+  `;
+  return row || null;
+}
+
+export async function updateBloodPressureReading(options: {
+  userId: string;
+  readingId: string;
+  systolic: number;
+  diastolic: number;
+  pulse: number | null;
+  period?: BpPeriod;
+  recordedAt?: Date;
+}): Promise<BloodPressureReading | null> {
+  const existing = await getEditableReading(options.userId, options.readingId);
+  if (!existing) return null;
+  const recordedAt = options.recordedAt ? options.recordedAt.toISOString() : null;
+  const period = options.period ?? null;
+  // An edited device reading becomes vault-owned so the next sync cannot overwrite it.
+  const [row] = await sql`
+    UPDATE blood_pressure_readings
+    SET systolic = ${options.systolic},
+        diastolic = ${options.diastolic},
+        pulse = ${options.pulse},
+        period = COALESCE(${period}, period),
+        recorded_at = COALESCE(${recordedAt}::timestamptz, recorded_at),
+        vault_owned = TRUE,
+        updated_at = NOW()
+    WHERE id = ${options.readingId}::uuid
+    RETURNING id, patient_id, recorded_at, period, systolic, diastolic, pulse, source, external_id, vault_owned
+  `;
+  return row ? toBloodPressureReading(row) : null;
+}
+
+export async function deleteBloodPressureReading(userId: string, readingId: string): Promise<{ patientId: string } | null> {
+  const existing = await getEditableReading(userId, readingId);
+  if (!existing) return null;
+  // Device readings that are not vault-owned would simply be re-imported by the next sync.
+  if (existing.vault_owned === false) return null;
+  await sql`DELETE FROM blood_pressure_readings WHERE id = ${readingId}::uuid`;
+  return { patientId: String(existing.patient_id) };
 }

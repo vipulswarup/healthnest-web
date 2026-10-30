@@ -18,6 +18,8 @@ const updateSchema = z.object({
   hospitalIdentifierType: z.string().optional(),
   hospitalIdentifierValue: z.string().optional(),
   patientId: z.string().uuid().optional(),
+  title: z.string().optional(),
+  customTypeLabel: z.string().optional(),
   approveReview: z.boolean().optional(),
 });
 
@@ -71,11 +73,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       nextTags = (baseTags || []).filter((tag) => tag !== 'needs_review');
     }
 
+    const [existing] = await sql`
+      SELECT data FROM health_records WHERE id = ${id}::uuid LIMIT 1
+    `;
+    const existingData = (existing?.data && typeof existing.data === 'object' && !Array.isArray(existing.data))
+      ? existing.data as Record<string, unknown>
+      : {};
+    let nextData: Record<string, unknown> | undefined = data.data;
+    if (data.title !== undefined || data.customTypeLabel !== undefined || data.recordType) {
+      nextData = { ...(nextData ?? existingData) };
+      if (data.title !== undefined) {
+        const trimmed = data.title.trim();
+        if (trimmed) nextData.titleOverride = trimmed;
+        else delete nextData.titleOverride;
+      }
+      if (data.customTypeLabel !== undefined) {
+        const trimmed = data.customTypeLabel.trim();
+        if (trimmed && (data.recordType || '').toUpperCase() === 'OTHER') {
+          nextData.customTypeLabel = trimmed;
+        } else {
+          delete nextData.customTypeLabel;
+        }
+      } else if (data.recordType && data.recordType.toUpperCase() !== 'OTHER') {
+        delete nextData.customTypeLabel;
+      }
+    }
+
     const [record] = await sql`
       UPDATE health_records hr SET
         patient_id = COALESCE(${data.patientId ?? null}::uuid, hr.patient_id),
         record_type = COALESCE(${data.recordType ?? null}, hr.record_type),
-        data = COALESCE(${data.data === undefined ? null : JSON.stringify(data.data)}::jsonb, hr.data),
+        data = COALESCE(${nextData === undefined ? null : JSON.stringify(nextData)}::jsonb, hr.data),
         tags = COALESCE(${nextTags ?? null}, hr.tags),
         source = COALESCE(${data.source ?? null}, hr.source),
         doctor_name = COALESCE(${data.doctorName ?? null}, hr.doctor_name),
@@ -106,6 +134,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           updated_at = NOW()
         WHERE id = ${String(record.document_id)}::uuid
       `;
+    }
+
+    if (record.document_id) {
+      const { syncDocumentFileName } = await import('@/lib/services/document.service');
+      await syncDocumentFileName(String(record.document_id)).catch(() => undefined);
     }
 
     await recordAuditEvent({

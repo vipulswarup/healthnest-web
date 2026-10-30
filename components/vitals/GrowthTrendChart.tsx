@@ -79,8 +79,8 @@ function LineChart({
         {latestLabel ? <p className="text-sm text-gray-600">{latestLabel}</p> : null}
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="mt-3 w-full" role="img" aria-label={`${title} trend`}>
-        <line x1={padX} y1={padY} x2={padX} y2={height - padY} stroke="#e5e7eb" strokeWidth="1" />
-        <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} stroke="#e5e7eb" strokeWidth="1" />
+        <line x1={padX} y1={padY} x2={padX} y2={height - padY} stroke="var(--silver)" strokeWidth="1" />
+        <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} stroke="var(--silver)" strokeWidth="1" />
         {yLabels[0] ? (
           <text x={4} y={padY + 4} className="fill-gray-500 text-[10px]">
             {yLabels[0]}
@@ -135,14 +135,14 @@ export function GrowthTrendChart({ measurements }: { measurements: GrowthMeasure
   return (
     <div className="space-y-3">
       {hasHeightTrend ? (
-        <LineChart title="Height" unit="cm" points={heightPoints} color="#EF8354" />
+        <LineChart title="Height" unit="cm" points={heightPoints} color="var(--brand)" />
       ) : heightPoints.length === 1 ? (
         <p className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
           Height: {heightPoints[0].value} cm on {formatCalendarDate(heightPoints[0].date)}. Add one more entry for a trend line.
         </p>
       ) : null}
       {hasWeightTrend ? (
-        <LineChart title="Weight" unit="kg" points={weightPoints} color="#059669" />
+        <LineChart title="Weight" unit="kg" points={weightPoints} color="var(--highlighter-red)" />
       ) : weightPoints.length === 1 ? (
         <p className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
           Weight: {weightPoints[0].value} kg on {formatCalendarDate(weightPoints[0].date)}. Add one more entry for a trend line.

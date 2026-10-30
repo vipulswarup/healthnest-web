@@ -5,6 +5,7 @@ export interface DocumentMetadata {
   fileName: string;
   fileSize: number;
   fileType: string;
+  checksumSha256?: string;
   /** A signed URL is deliberately never persisted; fetch one through /api/documents/view. */
   fileUrl?: string;
   r2Key: string;
@@ -35,4 +36,6 @@ export interface CreateDocumentInput {
   fileSize: number;
   fileType: string;
   r2Key: string;
+  checksumSha256?: string;
+  patientId?: string;
 }

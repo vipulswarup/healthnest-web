@@ -5,6 +5,11 @@ let categoriesCache: HealthRecordCategory[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
+export function invalidateCategoriesCache() {
+  categoriesCache = null;
+  cacheTimestamp = 0;
+}
+
 const CLASSIFICATION_ALIASES: Record<string, string> = {
   'pathology test': 'Lab Report',
   'lab test': 'Lab Report',

@@ -18,8 +18,30 @@ export type PageRotation = 0 | 90 | 180 | 270;
 
 const WIN_ANSI = /[^\t\n\r\x20-\x7e]/g;
 
+export function copyPdfBytes(bytes: Uint8Array): Uint8Array {
+  return Uint8Array.from(bytes);
+}
+
 export function toPdfBytes(data: ArrayBuffer | Uint8Array): Uint8Array {
-  return data instanceof Uint8Array ? data : new Uint8Array(data);
+  return data instanceof Uint8Array ? copyPdfBytes(data) : new Uint8Array(data);
+}
+
+export async function closePdfJsDocument(pdf: unknown): Promise<void> {
+  const doc = pdf as { destroy?: () => unknown; cleanup?: () => unknown };
+  try {
+    if (typeof doc.destroy === 'function') await doc.destroy();
+    else if (typeof doc.cleanup === 'function') await doc.cleanup();
+  } catch {
+    // PDF.js versions differ on destroy vs cleanup.
+  }
+}
+
+export function isPdfJsPasswordError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = 'name' in error ? String(error.name) : '';
+  if (name === 'PasswordException') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /password required|incorrect password|need.?password|no password given/i.test(message);
 }
 
 export function isPdfHeader(bytes: Uint8Array): boolean {
@@ -41,10 +63,11 @@ function isPasswordFailure(error: unknown): boolean {
 }
 
 export async function loadPdf(bytes: Uint8Array, password?: string): Promise<PDFDocument> {
+  const data = copyPdfBytes(bytes);
   try {
-    return await PDFDocument.load(bytes, password ? { password } : undefined);
+    return await PDFDocument.load(data, password ? { password } : undefined);
   } catch (error) {
-    if (isPasswordFailure(error)) throw new PdfPasswordError();
+    if (isPasswordFailure(error) || isPdfJsPasswordError(error)) throw new PdfPasswordError();
     throw error;
   }
 }

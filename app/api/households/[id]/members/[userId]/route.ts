@@ -44,6 +44,7 @@ export async function DELETE(
 
     const household = await getHouseholdForMember(parsedId.data, user.id);
     if (!household) throw new AppError('Household not found', 404);
+    if (household.created_by === targetUserId) throw new AppError('The family creator must leave themselves; ownership will transfer to a remaining member.', 403);
 
     const members = await sql`
       SELECT user_id FROM household_members WHERE household_id = ${parsedId.data}::uuid

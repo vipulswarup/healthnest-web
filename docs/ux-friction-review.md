@@ -1,5 +1,7 @@
 # SanoVault family UX friction review
 
+> **Point-in-time review (August 2026).** It describes the product as it was then. Decisions since then (navigation, palette, ordering, logging) are recorded in [../../DESIGN.md](../../DESIGN.md); current mobile status is in [../../sanovault-mobile/PLAN.md](../../sanovault-mobile/PLAN.md).
+
 Date: 20 August 2026
 Audience: product owner, for a family vault used by a non-technical spouse, a 73-year-old parent, and a cancer patient who already lives in WhatsApp and Google Drive.
 

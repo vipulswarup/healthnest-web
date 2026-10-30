@@ -4,12 +4,14 @@ import { useSession } from '@/lib/auth/client';
 import { useRouter, useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import RecordDataDisplay from '@/app/components/RecordDataDisplay';
+import PractitionerSummary from '@/components/documents/PractitionerSummary';
+import OriginalReportViewer from '@/components/documents/OriginalReportViewer';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 import AppNav from '@/components/layout/AppNav';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/ToastProvider';
 import { idTypeLabel, ID_DOCUMENT_TYPES } from '@/lib/constants/id-documents';
+import { formatCalendarDay, toCalendarDay } from '@/lib/dates/calendar-date';
 
 interface HealthRecord {
   id: string;
@@ -26,6 +28,7 @@ interface HealthRecord {
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
   hospitalIdentifierValue?: string;
+  title?: string;
 }
 
 interface Patient {
@@ -35,30 +38,43 @@ interface Patient {
 }
 
 type Draft = {
+  title: string;
   recordType: string;
+  customTypeLabel: string;
   source: string;
   doctorName: string;
   documentDate: string;
   idType: string;
   expiryDate: string;
   tags: string;
+  patientId: string;
+  patientFirstName: string;
+  patientLastName: string;
 };
 
+type TypeResolve =
+  | { action: 'use_existing' | 'created'; code: string; displayName: string }
+  | { action: 'suggest'; suggestion: { code: string; displayName: string }; customLabel: string };
+
 function toDateInput(value?: string) {
-  if (!value) return '';
-  return String(value).slice(0, 10);
+  return toCalendarDay(value) || '';
 }
 
-function draftFromRecord(record: HealthRecord): Draft {
+function draftFromRecord(record: HealthRecord, patient: Patient | null): Draft {
   const data = record.data || {};
   return {
+    title: record.title || '',
     recordType: record.recordType,
+    customTypeLabel: String(data.customTypeLabel || ''),
     source: record.source || '',
     doctorName: record.doctorName || '',
     documentDate: toDateInput(record.documentDate),
     idType: String(data.idType || ''),
     expiryDate: toDateInput(typeof data.expiryDate === 'string' ? data.expiryDate : ''),
     tags: (record.tags || []).join(', '),
+    patientId: record.patientId,
+    patientFirstName: patient?.firstName || '',
+    patientLastName: patient?.lastName || '',
   };
 }
 
@@ -81,10 +97,15 @@ export default function HealthRecordDetailPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [reassignPatientId, setReassignPatientId] = useState('');
+  const [typeSuggestion, setTypeSuggestion] = useState<TypeResolve & { action: 'suggest' } | null>(null);
 
   const getRecordTypeLabel = (code: string): string => {
     const category = categories.find(cat => cat.code === code);
-    return category?.displayName || code;
+    if (category) return category.displayName;
+    if (code === 'OTHER' && typeof record?.data?.customTypeLabel === 'string' && record.data.customTypeLabel) {
+      return record.data.customTypeLabel;
+    }
+    return code;
   };
 
   const needsReview = Boolean(record?.tags?.includes('needs_review'));
@@ -194,7 +215,8 @@ export default function HealthRecordDetailPage() {
 
   const startEdit = () => {
     if (!record) return;
-    setDraft(draftFromRecord(record));
+    setDraft(draftFromRecord(record, patient));
+    setTypeSuggestion(null);
     setEditing(true);
     setError('');
   };
@@ -202,6 +224,71 @@ export default function HealthRecordDetailPage() {
   const cancelEdit = () => {
     setEditing(false);
     setDraft(null);
+    setTypeSuggestion(null);
+  };
+
+  const persistRecord = async (draftValue: Draft, recordType: string, customTypeLabel?: string) => {
+    const tags = draftValue.tags.split(',').map((tag) => tag.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
+    const isId = recordType === 'ID_DOCUMENT';
+    const payload: Record<string, unknown> = {
+      recordType,
+      source: draftValue.source.trim() || (isId ? 'Issuing authority not specified' : 'Not specified'),
+      documentDate: draftValue.documentDate || undefined,
+      tags,
+      title: draftValue.title.trim(),
+      patientId: draftValue.patientId || undefined,
+      customTypeLabel: recordType === 'OTHER' ? (customTypeLabel || draftValue.customTypeLabel || '') : '',
+    };
+    if (isId) {
+      payload.doctorName = '';
+      payload.data = {
+        ...(record?.data || {}),
+        idType: draftValue.idType || undefined,
+        expiryDate: draftValue.expiryDate || undefined,
+      };
+    } else {
+      payload.doctorName = draftValue.doctorName.trim();
+    }
+
+    if (
+      draftValue.patientId === record?.patientId &&
+      (draftValue.patientFirstName.trim() !== (patient?.firstName || '') ||
+        draftValue.patientLastName.trim() !== (patient?.lastName || ''))
+    ) {
+      const patientResponse = await fetch(`/api/patients/${draftValue.patientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: draftValue.patientFirstName.trim() || patient?.firstName || 'Unknown',
+          lastName: draftValue.patientLastName.trim(),
+        }),
+      });
+      if (!patientResponse.ok) {
+        const body = await patientResponse.json() as { error?: string };
+        throw new Error(body.error || 'Could not update patient name');
+      }
+      const updatedPatient = await patientResponse.json() as Patient;
+      setPatient(updatedPatient);
+      setPatients((list) => list.map((item) => (item.id === updatedPatient.id ? updatedPatient : item)));
+    }
+
+    const response = await fetch(`/api/health-records/${recordId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json() as HealthRecord & { error?: string };
+    if (!response.ok) throw new Error(body.error || 'Could not save changes');
+    setRecord(body);
+    setReassignPatientId(body.patientId || '');
+    if (body.patientId && body.patientId !== patient?.id) {
+      const patientResponse = await fetch(`/api/patients/${body.patientId}`);
+      if (patientResponse.ok) setPatient(await patientResponse.json());
+    }
+    setEditing(false);
+    setDraft(null);
+    setTypeSuggestion(null);
+    notify('Saved.', 'success');
   };
 
   const handleSave = async () => {
@@ -209,36 +296,72 @@ export default function HealthRecordDetailPage() {
     setSaving(true);
     setError('');
     try {
-      const tags = draft.tags.split(',').map((tag) => tag.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
-      const isId = draft.recordType === 'ID_DOCUMENT';
-      const payload: Record<string, unknown> = {
-        recordType: draft.recordType,
-        source: draft.source.trim() || (isId ? 'Issuing authority not specified' : 'Not specified'),
-        documentDate: draft.documentDate || undefined,
-        tags,
-      };
-      if (isId) {
-        payload.doctorName = '';
-        payload.data = {
-          ...(record.data || {}),
-          idType: draft.idType || undefined,
-          expiryDate: draft.expiryDate || undefined,
-        };
-      } else {
-        payload.doctorName = draft.doctorName.trim();
+      let recordType = draft.recordType;
+      let customTypeLabel = draft.customTypeLabel.trim();
+
+      if (recordType === 'OTHER' && customTypeLabel) {
+        const resolveResponse = await fetch('/api/health-record-categories/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: customTypeLabel }),
+        });
+        const resolved = await resolveResponse.json() as TypeResolve & { error?: string };
+        if (!resolveResponse.ok) throw new Error(resolved.error || 'Could not resolve document type');
+        if (resolved.action === 'suggest') {
+          setTypeSuggestion(resolved);
+          setSaving(false);
+          return;
+        }
+        recordType = resolved.code;
+        customTypeLabel = '';
+        if (resolved.action === 'created') {
+          setCategories((list) => {
+            if (list.some((item) => item.code === resolved.code)) return list;
+            return [...list, {
+              id: resolved.code,
+              code: resolved.code,
+              displayName: resolved.displayName,
+              standardSystem: null,
+              standardCode: null,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }];
+          });
+        }
       }
 
-      const response = await fetch(`/api/health-records/${recordId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const body = await response.json() as HealthRecord & { error?: string };
-      if (!response.ok) throw new Error(body.error || 'Could not save changes');
-      setRecord(body);
-      setEditing(false);
-      setDraft(null);
-      notify('Saved.', 'success');
+      await persistRecord(draft, recordType, customTypeLabel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const acceptSuggestedType = async () => {
+    if (!draft || !typeSuggestion) return;
+    setSaving(true);
+    setError('');
+    try {
+      await persistRecord({ ...draft, recordType: typeSuggestion.suggestion.code, customTypeLabel: '' }, typeSuggestion.suggestion.code, '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const keepCustomType = async () => {
+    if (!draft || !typeSuggestion) return;
+    setSaving(true);
+    setError('');
+    try {
+      await persistRecord(
+        { ...draft, recordType: 'OTHER', customTypeLabel: typeSuggestion.customLabel },
+        'OTHER',
+        typeSuggestion.customLabel,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save changes');
     } finally {
@@ -248,7 +371,7 @@ export default function HealthRecordDetailPage() {
 
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
+      return new Date(dateString).toLocaleDateString('en-GB', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -260,17 +383,7 @@ export default function HealthRecordDetailPage() {
     }
   };
 
-  const formatDateOnly = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-    } catch {
-      return dateString;
-    }
-  };
+  const formatDateOnly = (dateString: string) => formatCalendarDay(dateString) || dateString;
 
   if (status === 'loading' || loading) {
     return (
@@ -357,11 +470,20 @@ export default function HealthRecordDetailPage() {
               </div>
             )}
             <div className="flex justify-between items-start mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  {getRecordTypeLabel(record.recordType)}
-                </h2>
-                {patient && (
+              <div className="min-w-0 flex-1 pr-4">
+                {editing && draft ? (
+                  <input
+                    value={draft.title}
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-2xl font-bold text-gray-900"
+                    aria-label="Title"
+                  />
+                ) : (
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    {record.title || getRecordTypeLabel(record.recordType)}
+                  </h2>
+                )}
+                {patient && !editing && (
                   <Link
                     href={`/patients/${patient.id}`}
                     className="text-sm text-coral hover:text-coral-strong transition-colors"
@@ -412,20 +534,107 @@ export default function HealthRecordDetailPage() {
               <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
             )}
 
+            {typeSuggestion && (
+              <div role="dialog" aria-label="Document type suggestion" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm text-amber-900">
+                  “{typeSuggestion.customLabel}” was not added as a global type.
+                  Closest match: <strong>{typeSuggestion.suggestion.displayName}</strong>.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void acceptSuggestedType()}
+                    className="rounded-lg bg-coral px-3 py-2 text-sm font-medium text-white hover:bg-coral-strong disabled:opacity-50"
+                  >
+                    Use {typeSuggestion.suggestion.displayName}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void keepCustomType()}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 disabled:opacity-50"
+                  >
+                    Keep custom on this record
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {editing && draft && (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">Patient</h3>
+                      <select
+                        value={draft.patientId}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          const next = patients.find((item) => item.id === nextId);
+                          setDraft({
+                            ...draft,
+                            patientId: nextId,
+                            patientFirstName: next?.firstName || draft.patientFirstName,
+                            patientLastName: next?.lastName || '',
+                          });
+                        }}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                      >
+                        {patients.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {[item.firstName, item.lastName].filter(Boolean).join(' ')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">Patient name</h3>
+                      <div className="flex gap-2">
+                        <input
+                          value={draft.patientFirstName}
+                          onChange={(e) => setDraft({ ...draft, patientFirstName: e.target.value })}
+                          placeholder="First name"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                          disabled={draft.patientId !== record.patientId}
+                        />
+                        <input
+                          value={draft.patientLastName}
+                          onChange={(e) => setDraft({ ...draft, patientLastName: e.target.value })}
+                          placeholder="Last name"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                          disabled={draft.patientId !== record.patientId}
+                        />
+                      </div>
+                      {draft.patientId !== record.patientId && (
+                        <p className="mt-1 text-xs text-gray-500">Name edits apply to the current patient only. Reassign first or edit after moving.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-2">Record type</h3>
                   {editing && draft ? (
-                    <select
-                      value={draft.recordType}
-                      onChange={(e) => setDraft({ ...draft, recordType: e.target.value })}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
-                    >
-                      {categories.map((category) => (
-                        <option key={category.code} value={category.code}>{category.displayName}</option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <select
+                        value={draft.recordType}
+                        onChange={(e) => setDraft({ ...draft, recordType: e.target.value, customTypeLabel: e.target.value === 'OTHER' ? draft.customTypeLabel : '' })}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                      >
+                        {categories.map((category) => (
+                          <option key={category.code} value={category.code}>{category.displayName}</option>
+                        ))}
+                      </select>
+                      {draft.recordType === 'OTHER' && (
+                        <input
+                          value={draft.customTypeLabel}
+                          onChange={(e) => setDraft({ ...draft, customTypeLabel: e.target.value })}
+                          placeholder="Custom type (optional)"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                        />
+                      )}
+                    </div>
                   ) : (
                     <p className="text-gray-900">{getRecordTypeLabel(record.recordType)}</p>
                   )}
@@ -576,26 +785,12 @@ export default function HealthRecordDetailPage() {
                 )}
               </div>
 
-              {record.documentId && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Document</h3>
-                  <Link
-                    href={`/health-records/${recordId}/document`}
-                    className="inline-flex items-center text-coral hover:text-coral-strong transition-colors cursor-pointer"
-                  >
-                    <span className="mr-2">📄</span>
-                    View Document
-                    <span className="ml-2">→</span>
-                  </Link>
-                </div>
-              )}
+              <PractitionerSummary recordId={record.id} revision={record.updatedAt} />
 
-              {record.data && Object.keys(record.data).length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-3">Record Details</h3>
-                  <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-                    <RecordDataDisplay data={record.data} />
-                  </div>
+              {record.documentId && (
+                <div className="space-y-3">
+                  <Link href={`/health-records/${recordId}/document`} className="inline-flex min-h-11 items-center text-sm font-medium text-brand-strong underline">Open full screen &amp; share</Link>
+                  <OriginalReportViewer documentId={record.documentId} title={record.title || getRecordTypeLabel(record.recordType)} />
                 </div>
               )}
             </div>

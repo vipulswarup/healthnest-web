@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { HealthRecordCategory } from '@/lib/types/health-record-category.types';
 import AppNav from '@/components/layout/AppNav';
-import Image from 'next/image';
+import OriginalReportViewer from '@/components/documents/OriginalReportViewer';
 import dynamic from 'next/dynamic';
 import { Button, buttonVariants } from '@heroui/react';
 
@@ -28,6 +28,7 @@ interface HealthRecord {
   hospitalSystemName?: string;
   hospitalIdentifierType?: string;
   hospitalIdentifierValue?: string;
+  title?: string;
 }
 
 interface Patient {
@@ -179,7 +180,7 @@ export default function DocumentPreviewPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h1 className="text-lg font-semibold text-gray-900">
-                  {getRecordTypeLabel(record.recordType)} - {record.source}
+                  {record.title || getRecordTypeLabel(record.recordType)}{record.source ? ` - ${record.source}` : ''}
                 </h1>
                 {patient && (
                   <p className="text-sm text-gray-600 mt-1">
@@ -191,7 +192,7 @@ export default function DocumentPreviewPage() {
                 {record.documentId ? (
                   <DocumentSharePanel
                     documentId={record.documentId}
-                    documentLabel={getRecordTypeLabel(record.recordType)}
+                    documentLabel={record.title || getRecordTypeLabel(record.recordType)}
                     senderName={session.user?.name || session.user?.email || 'A family member'}
                   />
                 ) : null}
@@ -240,42 +241,9 @@ export default function DocumentPreviewPage() {
             ) : null}
           </div>
 
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            {fileType === 'image' ? (
-              <div className="p-4">
-                <Image
-                  src={signedUrl}
-                  alt={`${getRecordTypeLabel(record.recordType)} document`}
-                  width={1200}
-                  height={1600}
-                  unoptimized
-                  className="max-w-full h-auto mx-auto rounded-lg"
-                  onError={() => setError('Failed to load image')}
-                />
-              </div>
-            ) : fileType === 'pdf' ? (
-              <div className="w-full" style={{ height: 'calc(100vh - 200px)' }}>
-                <iframe
-                  src={signedUrl}
-                  className="w-full h-full border-0"
-                  title="PDF Document"
-                  allow="fullscreen"
-                />
-              </div>
-            ) : (
-              <div className="p-12 text-center">
-                <p className="text-gray-600 mb-4">Preview not available for this file type</p>
-                <a
-                  href={downloadUrl || signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block px-6 py-2 bg-coral text-white rounded-lg hover:bg-coral-strong transition-colors"
-                >
-                  Download Document
-                </a>
-              </div>
-            )}
-          </div>
+          {record.documentId && (
+            <OriginalReportViewer documentId={record.documentId} title={record.title || getRecordTypeLabel(record.recordType)} />
+          )}
         </div>
       </main>
     </div>

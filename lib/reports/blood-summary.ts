@@ -366,9 +366,17 @@ export function sanitizeLabResults(raw: unknown): LabResult[] {
       : value !== null ? 'numeric' : 'qualitative';
     if (!metric || !rawValue) continue;
     const option = LAB_METRIC_OPTIONS.find((entry) => entry.metric === metric);
-    const panelRaw = String(row.panel || option?.panel || 'other');
-    const panel = (PANEL_SET.has(panelRaw) ? panelRaw : 'other') as LabPanel;
     const label = String(row.label || option?.label || metric).trim() || metric;
+    const rawLabel = row.rawLabel ? String(row.rawLabel) : undefined;
+    // Drop persisted medicine lines that were wrongly stored as CBC/lab rows.
+    if (isPrescriptionLikeLabLabel(rawLabel || label)) continue;
+    const panelRaw = String(row.panel || option?.panel || 'other');
+    let panel = (PANEL_SET.has(panelRaw) ? panelRaw : 'other') as LabPanel;
+    const mappingConfidence: MappingConfidence = ['verified', 'alias', 'unmapped'].includes(String(row.mappingConfidence))
+      ? row.mappingConfidence as MappingConfidence
+      : option ? 'verified' : 'unmapped';
+    // Unmapped rows must not sit under Blood (CBC) from a sticky panel at save time.
+    if (mappingConfidence === 'unmapped' && !option) panel = 'other';
     const unitRaw = row.unit === null || row.unit === undefined || row.unit === '' ? null : String(row.unit).trim();
     const referenceLow = asNumberOrNull(row.referenceLow);
     const referenceHigh = asNumberOrNull(row.referenceHigh);
@@ -391,10 +399,8 @@ export function sanitizeLabResults(raw: unknown): LabResult[] {
       referenceHigh,
       referenceText: row.referenceText ? String(row.referenceText) : null,
       flagText: row.flagText ? String(row.flagText) : null,
-      rawLabel: row.rawLabel ? String(row.rawLabel) : undefined,
-      mappingConfidence: ['verified', 'alias', 'unmapped'].includes(String(row.mappingConfidence))
-        ? row.mappingConfidence as MappingConfidence
-        : option ? 'verified' : 'unmapped',
+      rawLabel,
+      mappingConfidence,
       status,
     });
   }
@@ -533,9 +539,20 @@ export function parseBloodResultsLegacy(ocrText = ''): LabResult[] {
   return [...results.values()];
 }
 
+function isNonLabSectionHeading(line: string): boolean {
+  const value = normaliseWords(line);
+  return /interpretation|comments|end of report|test description|advice on discharge|discharge medication|take home|advice|prescription|prescribed|medication|medicines|treatment advice|discharge summary|drugs? to take|to take|dosage|\brx\b/.test(value);
+}
+
+function isLabSectionHeading(line: string): boolean {
+  const value = normaliseWords(line);
+  if (/biochemistry|clinical chemistry|serology|immunology|pathology|laboratory findings/.test(value)) return true;
+  return Boolean(panelFromHeading(line, null));
+}
+
 function panelFromHeading(line: string, current: LabPanel | null): LabPanel | null {
   const value = normaliseWords(line);
-  if (/interpretation|comments|end of report|test description/.test(value)) return null;
+  if (isNonLabSectionHeading(line)) return null;
   const letters = line.replace(/[^A-Za-z]/g, '');
   const capitals = letters.replace(/[^A-Z]/g, '');
   const headingLike = line.length <= 120 && letters.length > 0 && capitals.length / letters.length >= 0.7;
@@ -553,7 +570,28 @@ function panelFromHeading(line: string, current: LabPanel | null): LabPanel | nu
   return current;
 }
 
+/** True when a row label is almost certainly a medicine / Rx line, not a lab analyte. */
+export function isPrescriptionLikeLabLabel(label: string): boolean {
+  const trimmed = label.replace(/[\t ]+/g, ' ').trim();
+  if (/^\(/.test(trimmed) || /\(\s*\d/.test(trimmed)) return true;
+  const normalized = normaliseWords(label);
+  // Strength in the analyte name (e.g. Esomeprazole 40 mg) is almost never a lab row label.
+  if (/\b\d+(?:\.\d+)?\s*(mg|mcg|ug|µg|g|ml|iu)\b/.test(normalized)) return true;
+  if (/\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules|syrup|suspension|inj|injection|ampoule|sachet|ointment|cream|drops|od|bd|tds|qid|qhs|hs|sos|stat|bid|tid)\b/.test(normalized)) {
+    return true;
+  }
+  // Caps-heavy drug with a trailing dose (OCR of Rx lists often looks like lab rows with fake ranges).
+  const letters = trimmed.replace(/[^A-Za-z]/g, '');
+  const capitals = trimmed.replace(/[^A-Z]/g, '');
+  const looksLikeDrugToken = letters.length >= 5 && capitals.length / Math.max(letters.length, 1) >= 0.7;
+  const trailingDose = /\b\d+(?:\.\d+)?\s*$/.test(normalized);
+  return looksLikeDrugToken && trailingDose;
+}
+
 function isPlausibleResultLabel(label: string): boolean {
+  const trimmed = label.replace(/[\t ]+/g, ' ').trim();
+  if (/^\(/.test(trimmed)) return false;
+  if (isPrescriptionLikeLabLabel(trimmed)) return false;
   const normalized = normaliseWords(label);
   if (normalized.length < 2 || normalized.length > 90) return false;
   if (/^(method|page|patient|accession|sample|reported|received|drawn|reference|test report|sr no|age|sex|doctor|interpretation|note|result|unit|complete care|tel|new delhi)/.test(normalized)) return false;
@@ -594,7 +632,9 @@ function normalizeMetric(rawLabel: string, panel: LabPanel | null, aliasMappings
     for (const alias of definition.aliases) {
       const normalizedAlias = normaliseWords(alias);
       const exact = normalizedLabel === normalizedAlias;
-      const contained = normalizedLabel.includes(normalizedAlias);
+      // Word-boundary containment avoids short aliases (hb, ph, iron) matching inside drug names.
+      const aliasPattern = new RegExp(`(?:^|\\s)${escapeRegex(normalizedAlias)}(?:\\s|$)`);
+      const contained = !exact && aliasPattern.test(normalizedLabel);
       if (!exact && !contained) continue;
       const panelBonus = panel === definition.panel ? 30 : 0;
       const score = normalizedAlias.length + panelBonus + (exact ? 100 : 0);
@@ -609,10 +649,11 @@ function normalizeMetric(rawLabel: string, panel: LabPanel | null, aliasMappings
       mappingConfidence: 'alias',
     };
   }
+  // Unmapped rows must not inherit a sticky CBC/panel — that parks medicines under Blood (CBC).
   return {
-    metric: 'unmapped_' + (panel || 'other') + '_' + slug(rawLabel),
+    metric: 'unmapped_other_' + slug(rawLabel),
     label: titleCaseLabel(rawLabel),
-    panel: panel || 'other',
+    panel: 'other',
     mappingConfidence: 'unmapped',
   };
 }
@@ -659,7 +700,12 @@ function recomputeResultStatus(result: LabResult): void {
     : 'unknown');
 }
 
-function parseResultLine(line: string, panel: LabPanel | null, aliasMappings: LabAliasMapping[]): LabResult | null {
+function parseResultLine(
+  line: string,
+  panel: LabPanel | null,
+  aliasMappings: LabAliasMapping[],
+  options: { allowUnmapped?: boolean } = {},
+): LabResult | null {
   const compact = line.replace(/[\t ]+/g, ' ').trim();
   const match = compact.match(resultRowPattern);
   if (!match) return null;
@@ -668,6 +714,7 @@ function parseResultLine(line: string, panel: LabPanel | null, aliasMappings: La
   const rawValue = match[2].replace(/\s+/g, ' ').trim();
   let remainder = match[3].trim();
   const known = normalizeMetric(rawLabel, panel, aliasMappings);
+  if (known.mappingConfidence === 'unmapped' && options.allowUnmapped === false) return null;
 
   const flagMatch = remainder.match(/^(?:\*\*)?((?:critical\s+)?high|(?:critical\s+)?low|abnormal)(?:\*\*)?(?=\s|$)/i);
   const flagText = flagMatch?.[1] || null;
@@ -749,12 +796,20 @@ export function parseBloodResults(ocrText = '', aliasMappings: LabAliasMapping[]
   const results = new Map<string, LabResult>();
   const lines = ocrText.replace(/\r/g, '\n').split(/\n+/);
   let panel: LabPanel | null = null;
+  let inLabSection = true;
   let pending: LabResult | null = null;
   for (const rawLine of lines) {
     const line = rawLine.replace(/[\t ]+/g, ' ').trim();
     if (!line) continue;
+    if (isNonLabSectionHeading(line)) {
+      inLabSection = false;
+      panel = null;
+      pending = null;
+      continue;
+    }
+    if (isLabSectionHeading(line)) inLabSection = true;
     panel = panelFromHeading(line, panel);
-    const parsed = parseResultLine(line, panel, aliasMappings);
+    const parsed = parseResultLine(line, panel, aliasMappings, { allowUnmapped: inLabSection });
     if (!parsed) {
       if (pending && appendResultContinuation(pending, line)) continue;
       pending = null;
@@ -778,7 +833,9 @@ export function buildBloodReportSummary(inputs: BloodReportInput[]) {
     .map((input) => ({
       ...input,
       useManualResults: !!input.useManualResults,
-      results: resolveReportResults(input),
+      results: resolveReportResults(input).filter((result) => (
+        !isPrescriptionLikeLabLabel(result.rawLabel || result.label)
+      )),
     }))
     .filter((report) => report.results.length > 0)
     .sort((a, b) => b.date.getTime() - a.date.getTime());

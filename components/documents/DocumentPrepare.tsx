@@ -15,24 +15,32 @@ import {
 export function DocumentPrepare({
   files,
   dateOfBirth,
+  extraPasswords = [],
   onCancel,
   onReady,
+  onUnlockedWithPassword,
 }: {
   files: File[];
   dateOfBirth?: string | Date | null;
+  extraPasswords?: string[];
   onCancel: () => void;
   onReady: (files: File[]) => void;
+  onUnlockedWithPassword?: (password: string) => void;
 }) {
   const [sources, setSources] = useState<PreparedSource[] | null>(null);
   const [pages, setPages] = useState<PreparedPage[]>([]);
-  const [combine, setCombine] = useState(files.length > 1);
+  const allImages = files.length > 1 && files.every((file) => file.type.startsWith('image/'));
+  const [combine, setCombine] = useState(allImages);
   const [compress, setCompress] = useState(files.some((file) => file.size > 8 * 1024 * 1024));
   const [keepDroppedAsNext, setKeepDroppedAsNext] = useState(false);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState('Reading files…');
   const [error, setError] = useState('');
 
-  const dobPasswords = useMemo(() => dobPasswordCandidates(dateOfBirth), [dateOfBirth]);
+  const dobPasswords = useMemo(
+    () => [...new Set([...extraPasswords, ...dobPasswordCandidates(dateOfBirth)])],
+    [dateOfBirth, extraPasswords],
+  );
   const locked = sources?.find((source) => source.encrypted);
 
   useEffect(() => {
@@ -81,7 +89,9 @@ export function DocumentPrepare({
       const nextPages = await buildPageList(nextSources);
       setSources(nextSources);
       setPages(nextPages);
+      const used = password.trim();
       setPassword('');
+      if (used) onUnlockedWithPassword?.(used);
     } catch (err) {
       setError(err instanceof PdfPasswordError ? 'That password did not open the PDF. Labs often use date of birth as DDMMYYYY.' : err instanceof Error ? err.message : 'Could not unlock this PDF');
     } finally {
@@ -152,7 +162,10 @@ export function DocumentPrepare({
     <div className="space-y-5">
       <div>
         <h3 className="text-lg font-semibold text-gray-900">Prepare the document</h3>
-        <p className="mt-1 text-sm text-gray-600">Rotate pages, drop extras, then continue. Photos are combined into one PDF before upload.</p>
+        <p className="mt-1 text-sm text-gray-600">
+          Rotate pages, drop extras, then continue. Each file becomes its own record unless you combine them.
+          All-photo selections start combined into one PDF.
+        </p>
       </div>
 
       {busy ? <p className="text-sm text-gray-600" role="status">{busy}</p> : null}

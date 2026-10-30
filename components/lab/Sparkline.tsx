@@ -19,7 +19,7 @@ export function Sparkline({ values }: SparklineProps) {
     })
     .join(' ');
   const rising = values[values.length - 1] >= values[0];
-  const stroke = rising ? '#EF8354' : '#4F5D75';
+  const stroke = rising ? 'var(--highlighter-red)' : 'var(--brand)';
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible" aria-hidden="true">
       <polyline fill="none" stroke={stroke} strokeWidth="2" points={points} />

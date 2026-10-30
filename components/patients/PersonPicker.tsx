@@ -28,7 +28,7 @@ export default function PersonPicker({ people, selectedId, lastUsedId, onSelect 
               onClick={() => onSelect(person.id)}
               className={`flex min-h-16 w-full items-center justify-between rounded-xl border px-4 py-4 text-left text-lg font-semibold transition ${
                 selected
-                  ? 'border-coral bg-blue-50 text-[#D96C3D]'
+                  ? 'border-brand bg-brand-tint text-brand-strong'
                   : 'border-gray-200 bg-white text-gray-950 hover:border-blue-200 hover:bg-blue-50'
               }`}
             >
