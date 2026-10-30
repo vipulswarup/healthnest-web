@@ -11,6 +11,7 @@ type Props = {
   onChange: (values: MedicationFormValues) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel?: () => void;
+  onConfirmEntered?: () => void;
   showPhotoCapture?: boolean;
   photoCapture?: React.ReactNode;
   extractionHint?: string | null;
@@ -24,6 +25,7 @@ export function MedicationFormFields({
   onChange,
   onSubmit,
   onCancel,
+  onConfirmEntered,
   photoCapture,
   extractionHint,
 }: Props) {
@@ -161,13 +163,27 @@ export function MedicationFormFields({
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => onChange({ ...values, ingredients: [...values.ingredients, emptyIngredient()] })}
-            className="mt-3 text-sm font-medium text-coral hover:underline"
-          >
-            + Add ingredient
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onChange({ ...values, ingredients: [...values.ingredients, emptyIngredient()] })}
+              className="text-sm font-medium text-coral hover:underline"
+            >
+              + Add ingredient
+            </button>
+            {onConfirmEntered && values.ingredients.some(
+              (ingredient) => ingredient.canonicalInn.trim() && ingredient.strength.trim() && ingredient.strengthUnit.trim(),
+            ) ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={onConfirmEntered}
+                className="rounded-lg bg-coral px-3 py-1.5 text-sm font-medium text-white hover:bg-coral-strong disabled:opacity-60"
+              >
+                Confirm this composition
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
 
@@ -192,6 +208,31 @@ export function MedicationFormFields({
           <input type="date" required value={values.startDate} onChange={(event) => onChange({ ...values, startDate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
         </label>
         <label className="text-sm font-medium text-gray-700">
+          End date (optional)
+          <input
+            type="date"
+            value={values.endDate}
+            min={values.startDate || undefined}
+            onChange={(event) => onChange({ ...values, endDate: event.target.value })}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <span className="mt-1 block text-xs font-normal text-gray-500">
+            Leave blank while the course is ongoing. Used as the stop date when the medicine is inactive.
+          </span>
+        </label>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm font-medium text-gray-700">
+          Prescribed by (optional)
+          <input
+            value={values.prescribedBy}
+            onChange={(event) => onChange({ ...values, prescribedBy: event.target.value })}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            placeholder="Doctor or clinic name"
+          />
+        </label>
+        <label className="text-sm font-medium text-gray-700">
           Reason for use (optional)
           <input value={values.indication} onChange={(event) => onChange({ ...values, indication: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="e.g. hypertension" />
         </label>
@@ -212,23 +253,12 @@ export function MedicationFormFields({
           Active medication
         </label>
         {!values.isActive && (
-          <>
-            <input
-              value={values.stoppedReason}
-              onChange={(event) => onChange({ ...values, stoppedReason: event.target.value })}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              placeholder="Reason stopped (optional)"
-            />
-            <label className="text-sm text-gray-700">
-              Stop date
-              <input
-                type="date"
-                value={values.endDate}
-                onChange={(event) => onChange({ ...values, endDate: event.target.value })}
-                className="ml-2 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-          </>
+          <input
+            value={values.stoppedReason}
+            onChange={(event) => onChange({ ...values, stoppedReason: event.target.value })}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            placeholder="Reason stopped (optional)"
+          />
         )}
       </div>
 

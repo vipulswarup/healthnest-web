@@ -4,6 +4,11 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { sql } from '@/lib/db/neon';
 import { AppError, handleError } from '@/lib/middleware/error-handler';
 import {
+  medicationEndDateSchema,
+  optionalMedicationStartDateSchema,
+  withMedicationDateOrder,
+} from '@/lib/medications/date-schema';
+import {
   medicationCompositionSchema,
   medicationCountrySchema,
   resolveMedicationComposition,
@@ -17,15 +22,15 @@ import {
 import { queueMedicationCatalogueSubmission } from '@/lib/services/medication-catalogue.service';
 
 const medicationIdSchema = z.string().uuid('Invalid medication ID');
-const updateMedicationSchema = z.object({
+const updateMedicationSchema = withMedicationDateOrder(z.object({
   name: z.string().min(1).optional(),
   originalBrandName: z.string().min(1).max(160).optional(),
   purchaseCountry: medicationCountrySchema.optional().nullable(),
   dosage: z.string().min(1).optional(),
   frequency: z.string().min(1).optional(),
   route: z.string().min(1).optional(),
-  startDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
-  endDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional().nullable(),
+  startDate: optionalMedicationStartDateSchema,
+  endDate: medicationEndDateSchema,
   instructions: z.string().optional(),
   prescribedBy: z.string().optional(),
   source: z.string().optional(),
@@ -34,7 +39,7 @@ const updateMedicationSchema = z.object({
   isActive: z.boolean().optional(),
   tags: z.array(z.string()).optional(),
   composition: medicationCompositionSchema.optional(),
-});
+}));
 
 async function requestContext(params: Promise<{ id: string }>) {
   const user = await getCurrentUser();
@@ -64,6 +69,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const existing = await getAccessibleMedication(user.id, id);
     if (!existing) throw new AppError('Medication not found', 404);
+
+    const nextStartDate = data.startDate
+      || (existing.start_date ? String(existing.start_date).slice(0, 10) : undefined);
+    const nextEndDate = data.endDate === undefined
+      ? (existing.end_date ? String(existing.end_date).slice(0, 10) : null)
+      : data.endDate;
+    if (nextStartDate && nextEndDate && nextEndDate < nextStartDate) {
+      throw new AppError('End date cannot be earlier than the start date', 400, 'VALIDATION_ERROR');
+    }
 
     const nextPurchaseCountry = data.purchaseCountry !== undefined
       ? data.purchaseCountry

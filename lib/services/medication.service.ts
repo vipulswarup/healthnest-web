@@ -61,7 +61,9 @@ export function toMedication(row: MedicationRow) {
       sourceVersion: row.composition_source_version ? String(row.composition_source_version) : null,
       ingredients,
       reviewStatus,
-      requiresWarning: compositionStatus !== 'CONFIRMED' || reviewStatus === 'FLAGGED',
+      // Brand-only entries without salts are incomplete, not “unconfirmed composition”.
+      requiresWarning: reviewStatus === 'FLAGGED'
+        || (compositionStatus !== 'CONFIRMED' && ingredients.some((ingredient) => ingredient.canonicalInn.trim())),
     },
   };
 }

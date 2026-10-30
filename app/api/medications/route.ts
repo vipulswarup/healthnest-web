@@ -6,6 +6,11 @@ import { canAccessPatient } from '@/lib/households/access';
 import { AppError, handleError } from '@/lib/middleware/error-handler';
 import { recordAuditEvent } from '@/lib/services/audit.service';
 import {
+  medicationStartDateSchema,
+  medicationEndDateSchema,
+  withMedicationDateOrder,
+} from '@/lib/medications/date-schema';
+import {
   medicationCompositionSchema,
   medicationCountrySchema,
   resolveMedicationComposition,
@@ -17,15 +22,15 @@ import {
 } from '@/lib/services/medication.service';
 import { queueMedicationCatalogueSubmission } from '@/lib/services/medication-catalogue.service';
 
-const medicationSchema = z.object({
+const medicationSchema = withMedicationDateOrder(z.object({
   patientId: z.string().uuid('Patient ID is required'),
   name: z.string().min(1, 'Medication brand name is required').max(160),
   purchaseCountry: medicationCountrySchema.optional().nullable(),
   dosage: z.string().min(1, 'Dosage is required').max(300),
   frequency: z.string().min(1, 'Frequency is required').max(160),
   route: z.string().min(1, 'Route is required').max(80),
-  startDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
-  endDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional().nullable(),
+  startDate: medicationStartDateSchema,
+  endDate: medicationEndDateSchema,
   instructions: z.string().max(2000).optional(),
   prescribedBy: z.string().max(160).optional(),
   source: z.string().max(160).optional(),
@@ -34,7 +39,7 @@ const medicationSchema = z.object({
   isActive: z.boolean().optional(),
   tags: z.array(z.string().max(80)).max(30).optional(),
   composition: medicationCompositionSchema.optional(),
-});
+}));
 
 async function currentUser() {
   const user = await getCurrentUser();

@@ -32,42 +32,61 @@ export async function resolveMedicationComposition(
     };
   }
 
-  if (!composition.catalogProductId) {
-    throw new AppError('Choose a verified catalogue product before confirming a composition', 400, 'CATALOGUE_SELECTION_REQUIRED');
+  // Prefer a verified catalogue product when one is selected.
+  if (composition.catalogProductId) {
+    const [product] = await sql`
+      SELECT id, country, formulation, source_name, source_version
+      FROM medication_catalog_products
+      WHERE id = ${composition.catalogProductId}::uuid
+        AND review_status = 'VERIFIED'
+        AND discontinued = FALSE
+    `;
+    if (!product || (purchaseCountry && product.country !== purchaseCountry)) {
+      throw new AppError('This catalogue product is not available for confirmation', 409, 'CATALOGUE_PRODUCT_UNAVAILABLE');
+    }
+
+    const ingredients = await sql`
+      SELECT canonical_inn, local_alias, strength, strength_unit
+      FROM medication_catalog_product_ingredients
+      WHERE product_id = ${product.id}::uuid
+      ORDER BY ingredient_order ASC
+    `;
+    if (ingredients.length === 0) {
+      throw new AppError('The selected catalogue product has no verified composition', 409, 'CATALOGUE_COMPOSITION_MISSING');
+    }
+
+    return {
+      status: 'CONFIRMED',
+      catalogProductId: String(product.id),
+      formulation: String(product.formulation),
+      sourceName: String(product.source_name),
+      sourceVersion: String(product.source_version),
+      ingredients: ingredients.map((ingredient) => ({
+        canonicalInn: String(ingredient.canonical_inn),
+        localAlias: ingredient.local_alias ? String(ingredient.local_alias) : null,
+        strength: String(ingredient.strength),
+        strengthUnit: String(ingredient.strength_unit),
+      })),
+    };
   }
 
-  const [product] = await sql`
-    SELECT id, country, formulation, source_name, source_version
-    FROM medication_catalog_products
-    WHERE id = ${composition.catalogProductId}::uuid
-      AND review_status = 'VERIFIED'
-      AND discontinued = FALSE
-  `;
-  if (!product || (purchaseCountry && product.country !== purchaseCountry)) {
-    throw new AppError('This catalogue product is not available for confirmation', 409, 'CATALOGUE_PRODUCT_UNAVAILABLE');
-  }
-
-  const ingredients = await sql`
-    SELECT canonical_inn, local_alias, strength, strength_unit
-    FROM medication_catalog_product_ingredients
-    WHERE product_id = ${product.id}::uuid
-    ORDER BY ingredient_order ASC
-  `;
+  // Household-attested confirmation when salt/strength are already filled in.
+  const ingredients = (composition.ingredients || []).filter(
+    (ingredient) => ingredient.canonicalInn.trim() && ingredient.strength.trim() && ingredient.strengthUnit.trim(),
+  );
   if (ingredients.length === 0) {
-    throw new AppError('The selected catalogue product has no verified composition', 409, 'CATALOGUE_COMPOSITION_MISSING');
+    throw new AppError(
+      'Add at least one salt with strength, or choose a verified catalogue product, before confirming',
+      400,
+      'COMPOSITION_INCOMPLETE',
+    );
   }
 
   return {
     status: 'CONFIRMED',
-    catalogProductId: String(product.id),
-    formulation: String(product.formulation),
-    sourceName: String(product.source_name),
-    sourceVersion: String(product.source_version),
-    ingredients: ingredients.map((ingredient) => ({
-      canonicalInn: String(ingredient.canonical_inn),
-      localAlias: ingredient.local_alias ? String(ingredient.local_alias) : null,
-      strength: String(ingredient.strength),
-      strengthUnit: String(ingredient.strength_unit),
-    })),
+    formulation: composition.formulation || null,
+    sourceName: 'household',
+    sourceVersion: '1',
+    ingredients,
   };
 }

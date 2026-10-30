@@ -9,6 +9,7 @@ import { MedicationPhotoCapture, type MedicationExtractionResult } from '@/compo
 import { useSession } from '@/lib/auth/client';
 import {
   buildCompositionPayload,
+  compositionIngredientsComplete,
   countryLabels,
   defaultFormValues,
   formValuesFromMedication,
@@ -57,6 +58,7 @@ function MedicationsContent() {
   const [extractionHint, setExtractionHint] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const formValuesRef = useRef(formValues);
+  const editFormRef = useRef<HTMLElement | null>(null);
 
   const activeCount = useMemo(() => medications.filter((medication) => medication.isActive).length, [medications]);
   const unconfirmedCount = useMemo(
@@ -68,6 +70,11 @@ function MedicationsContent() {
   useEffect(() => {
     formValuesRef.current = formValues;
   }, [formValues]);
+
+  useEffect(() => {
+    if (!editingId || !editFormRef.current) return;
+    editFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editingId]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -109,7 +116,6 @@ function MedicationsContent() {
   }, [patientId]);
 
   useEffect(() => {
-    if (editingId) return;
     if (formValues.brandName.trim().length < 2) {
       setCandidates([]);
       return;
@@ -122,6 +128,7 @@ function MedicationsContent() {
         );
         const nextCandidates = response.ok ? await response.json() as CatalogueProduct[] : [];
         setCandidates(nextCandidates);
+        // Auto-fill catalogue matches only while adding a brand-only entry — not while editing.
         if (!editingId && isBrandOnlyEntry(currentValues)) {
           const match = autoResolvableCandidate(currentValues.brandName.trim(), nextCandidates);
           if (match) {
@@ -202,6 +209,12 @@ function MedicationsContent() {
     try {
       setSaving(true);
       setError('');
+      if (!formValues.startDate.trim()) {
+        throw new Error('Start date is required');
+      }
+      if (formValues.endDate && formValues.endDate < formValues.startDate) {
+        throw new Error('End date cannot be earlier than the start date');
+      }
       const response = await fetch('/api/medications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,8 +226,9 @@ function MedicationsContent() {
           frequency: formValues.frequency,
           route: formValues.route,
           startDate: formValues.startDate,
-          endDate: formValues.isActive ? null : (formValues.endDate || null),
+          endDate: formValues.endDate || null,
           instructions: formValues.instructions,
+          prescribedBy: formValues.prescribedBy || undefined,
           indication: formValues.indication,
           isActive: formValues.isActive,
           stoppedReason: formValues.isActive ? undefined : formValues.stoppedReason,
@@ -233,40 +247,129 @@ function MedicationsContent() {
     }
   }
 
+  async function saveMedicationUpdate(
+    medicationId: string,
+    composition: ReturnType<typeof buildCompositionPayload>,
+    successMessage: string,
+  ) {
+    if (!patientId) return;
+    if (!formValues.startDate.trim()) {
+      throw new Error('Start date is required');
+    }
+    if (formValues.endDate && formValues.endDate < formValues.startDate) {
+      throw new Error('End date cannot be earlier than the start date');
+    }
+    const response = await fetch(`/api/medications/${medicationId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: formValues.brandName,
+        originalBrandName: formValues.brandName,
+        purchaseCountry: formValues.country,
+        dosage: formValues.dosage,
+        frequency: formValues.frequency,
+        route: formValues.route,
+        startDate: formValues.startDate,
+        endDate: formValues.endDate || null,
+        instructions: formValues.instructions,
+        prescribedBy: formValues.prescribedBy || '',
+        indication: formValues.indication,
+        isActive: formValues.isActive,
+        stoppedReason: formValues.isActive ? '' : formValues.stoppedReason,
+        composition,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not update medication');
+    closeForms();
+    await loadMedications(patientId);
+    notify(successMessage, 'success');
+  }
+
   async function updateMedication(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!patientId || !editingId) return;
     try {
       setSaving(true);
       setError('');
-      const response = await fetch(`/api/medications/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formValues.brandName,
-          originalBrandName: formValues.brandName,
-          purchaseCountry: formValues.country,
-          dosage: formValues.dosage,
-          frequency: formValues.frequency,
-          route: formValues.route,
-          startDate: formValues.startDate,
-          endDate: formValues.isActive ? null : (formValues.endDate || new Date().toISOString().slice(0, 10)),
-          instructions: formValues.instructions,
-          indication: formValues.indication,
-          isActive: formValues.isActive,
-          stoppedReason: formValues.isActive ? '' : formValues.stoppedReason,
-          composition: buildCompositionPayload(formValues),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not update medication');
-      closeForms();
-      await loadMedications(patientId);
-      notify('Medication updated.', 'success');
+      await saveMedicationUpdate(editingId, buildCompositionPayload(formValues), 'Medication updated.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update medication');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmEnteredComposition() {
+    if (!patientId || !editingId) return;
+    try {
+      setSaving(true);
+      setError('');
+      await saveMedicationUpdate(
+        editingId,
+        buildCompositionPayload(formValues, { confirmEntered: true }),
+        'Composition confirmed.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not confirm composition');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmMedicationComposition(medication: Medication) {
+    if (!patientId) return;
+    try {
+      setActionId(medication.id);
+      setError('');
+      const country = medication.purchaseCountry || 'IN';
+      const searchResponse = await fetch(
+        `/api/medication-catalog/search?country=${country}&q=${encodeURIComponent(medication.originalBrandName.trim())}`,
+      );
+      const nextCandidates = searchResponse.ok ? await searchResponse.json() as CatalogueProduct[] : [];
+      const match = autoResolvableCandidate(medication.originalBrandName.trim(), nextCandidates);
+
+      let composition: ReturnType<typeof buildCompositionPayload>;
+      if (match) {
+        composition = { status: 'CONFIRMED', catalogProductId: match.id };
+      } else if (compositionIngredientsComplete(medication)) {
+        composition = {
+          status: 'CONFIRMED',
+          formulation: medication.composition.formulation,
+          ingredients: medication.composition.ingredients.filter(
+            (ingredient) => ingredient.canonicalInn.trim() && ingredient.strength.trim() && ingredient.strengthUnit.trim(),
+          ),
+        };
+      } else {
+        startEdit(medication);
+        setCandidates(nextCandidates);
+        setExtractionHint(
+          nextCandidates.length > 0
+            ? 'Pick a verified catalogue match, or enter salt and strength, then confirm.'
+            : 'Enter salt and strength, then use Confirm this composition.',
+        );
+        notify('Composition needs a quick check before it can be confirmed.', 'info');
+        return;
+      }
+
+      const response = await fetch(`/api/medications/${medication.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ composition }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not confirm composition');
+      await loadMedications(patientId);
+      notify(
+        match
+          ? `Confirmed from catalogue: ${match.brandName}.`
+          : 'Composition confirmed.',
+        'success',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not confirm composition');
+    } finally {
+      setActionId(null);
     }
   }
 
@@ -318,7 +421,11 @@ function MedicationsContent() {
     setEditingId(medication.id);
     setFormValues(formValuesFromMedication(medication));
     setCandidates([]);
-    setExtractionHint(null);
+    setExtractionHint(
+      medication.composition.requiresWarning
+        ? 'Pick a verified catalogue match below, or confirm the salt and strength shown.'
+        : null,
+    );
   }
 
   if (status === 'loading' || loading) {
@@ -417,35 +524,46 @@ function MedicationsContent() {
                 </section>
               )}
 
-              {editingId && editingMedication && (
-                <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                  <h2 className="text-xl font-semibold text-gray-900">Edit medication</h2>
-                  <p className="mt-1 text-sm text-gray-600">Update details if the doctor changed the medicine or the photo read the name wrong.</p>
-                  <div className="mt-6">
-                    <MedicationFormFields
-                      values={formValues}
-                      candidates={candidates}
-                      saving={saving}
-                      submitLabel="Save changes"
-                      onChange={setFormValues}
-                      onSubmit={updateMedication}
-                      onCancel={closeForms}
-                    />
-                  </div>
-                </section>
-              )}
-
               <section className="rounded-2xl bg-white p-6 shadow-xl">
                 <h2 className="text-xl font-semibold text-gray-900">Medication list</h2>
                 {unconfirmedCount > 0 ? (
                   <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                    {unconfirmedCount} medicine{unconfirmedCount === 1 ? '' : 's'} {unconfirmedCount === 1 ? 'has' : 'have'} an unconfirmed composition. Confirm from the catalogue before relying on the salt or strength.
+                    {unconfirmedCount} medicine{unconfirmedCount === 1 ? '' : 's'} {unconfirmedCount === 1 ? 'has' : 'have'} an unconfirmed composition. Use Confirm composition, or Edit and pick a catalogue match.
                   </p>
                 ) : null}
                 <div className="mt-5 space-y-3">
                   {medications.length === 0 ? (
                     <p className="py-6 text-center text-gray-500">No medications recorded for this person. Take a photo above to add the first one.</p>
                   ) : medications.map((medication) => (
+                    editingId === medication.id && editingMedication ? (
+                      <section
+                        key={medication.id}
+                        ref={editFormRef}
+                        className="rounded-xl border border-coral/40 bg-white p-4 shadow-sm"
+                      >
+                        <h3 className="text-lg font-semibold text-gray-900">Edit medication</h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Update details if the doctor changed the medicine or the photo read the name wrong.
+                        </p>
+                        <div className="mt-4">
+                          <MedicationFormFields
+                            values={formValues}
+                            candidates={candidates}
+                            saving={saving}
+                            submitLabel="Save changes"
+                            onChange={setFormValues}
+                            onSubmit={updateMedication}
+                            onCancel={closeForms}
+                            onConfirmEntered={
+                              medication.composition.requiresWarning
+                                ? () => { void confirmEnteredComposition(); }
+                                : undefined
+                            }
+                            extractionHint={extractionHint}
+                          />
+                        </div>
+                      </section>
+                    ) : (
                     <article
                       key={medication.id}
                       className={`rounded-xl border p-4 ${medication.composition.requiresWarning ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
@@ -475,12 +593,31 @@ function MedicationsContent() {
                       </div>
 
                       <p className="mt-3 text-sm text-gray-600">{medication.dosage} · {medication.frequency} · {medication.route}</p>
+                      {(medication.startDate || medication.endDate) && (
+                        <p className="mt-1 text-sm text-gray-600">
+                          {medication.startDate ? `From ${String(medication.startDate).slice(0, 10)}` : ''}
+                          {medication.endDate ? ` · Until ${String(medication.endDate).slice(0, 10)}` : ''}
+                        </p>
+                      )}
+                      {medication.prescribedBy ? (
+                        <p className="mt-1 text-sm text-gray-600">Prescribed by {medication.prescribedBy}</p>
+                      ) : null}
                       {medication.instructions && <p className="mt-1 text-sm text-gray-600">Original instructions: {medication.instructions}</p>}
                       {!medication.isActive && medication.stoppedReason && (
                         <p className="mt-1 text-sm text-gray-600">Stopped because: {medication.stoppedReason}</p>
                       )}
 
                       <div className="mt-4 flex flex-wrap gap-2">
+                        {medication.composition.requiresWarning ? (
+                          <button
+                            type="button"
+                            onClick={() => void confirmMedicationComposition(medication)}
+                            disabled={actionId === medication.id}
+                            className="rounded-lg bg-coral px-3 py-1.5 text-sm font-medium text-white hover:bg-coral-strong disabled:opacity-60"
+                          >
+                            {actionId === medication.id ? 'Confirming…' : 'Confirm composition'}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => startEdit(medication)}
@@ -509,6 +646,7 @@ function MedicationsContent() {
                         </button>
                       </div>
                     </article>
+                    )
                   ))}
                 </div>
               </section>
