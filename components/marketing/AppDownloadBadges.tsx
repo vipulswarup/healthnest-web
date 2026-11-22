@@ -1,5 +1,4 @@
-import { APP_STORE_URL } from '@/lib/site';
-
+const APP_STORE_URL = 'https://apps.apple.com/us/app/sanovault/id6812724169';
 const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=com.sanovault.app&pli=1';
 
 function AppleIcon() {
