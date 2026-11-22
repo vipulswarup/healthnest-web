@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MarketingShell } from '@/components/marketing/MarketingShell';
+import { publicPageMetadata } from '@/lib/seo';
 import { privacyPolicy } from '@/lib/legal/privacy';
-export const metadata: Metadata = { title: 'Privacy Policy', description: 'How SanoVault handles family health records, sharing, service providers and deletion.', alternates: { canonical: '/privacy' } };
+export const metadata: Metadata = publicPageMetadata({
+  title: 'Privacy Policy · SanoVault',
+  description: 'How SanoVault handles family health records, sharing, service providers and deletion.',
+  path: '/privacy',
+});
 export default function PrivacyPage() {
   return <MarketingShell><main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
     <h1 className="text-3xl font-bold tracking-tight">{privacyPolicy.title}</h1>

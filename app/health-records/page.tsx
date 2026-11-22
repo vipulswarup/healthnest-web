@@ -60,6 +60,10 @@ function HealthRecordsContent() {
     ['source', 'recordType', 'tag', 'startDate', 'endDate'].some((key) => searchParams.has(key)),
   );
   const [recordPendingDelete, setRecordPendingDelete] = useState<string | null>(null);
+  const [approvingRecordId, setApprovingRecordId] = useState<string | null>(null);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [creatingShareLinks, setCreatingShareLinks] = useState(false);
 
   // Keep filter state aligned with URL (Needs review / deep links update searchParams only).
   useEffect(() => {
@@ -162,7 +166,8 @@ function HealthRecordsContent() {
       const keywordParam = searchParams.get('keyword') || '';
       const start = searchParams.get('startDate') || '';
       const end = searchParams.get('endDate') || '';
-      const patientFromUrl = searchParams.get('patientId') || selectedPatientId;
+      const familyInbox = searchParams.get('familyInbox') === 'true';
+      const patientFromUrl = familyInbox ? '' : (searchParams.get('patientId') || selectedPatientId);
       const params = new URLSearchParams();
 
       if (patientFromUrl) params.append('patientId', patientFromUrl);
@@ -179,6 +184,7 @@ function HealthRecordsContent() {
       }
       const data = await response.json();
       setRecords(data);
+      setSelectedRecordIds([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -201,6 +207,18 @@ function HealthRecordsContent() {
     void fetchRecords();
   }, [fetchRecords]);
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    let cancelled = false;
+    void fetch('/api/health-records?tag=needs_review', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : [])
+      .then((data: unknown) => {
+        if (!cancelled && Array.isArray(data)) setNeedsReviewCount(data.length);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [session?.user?.id, records]);
+
   const handleDelete = async (id: string) => {
     try {
       const response = await fetch(`/api/health-records/${id}`, {
@@ -220,10 +238,67 @@ function HealthRecordsContent() {
     }
   };
 
+  const handleApproveReview = async (record: HealthRecord) => {
+    setApprovingRecordId(record.id);
+    try {
+      const response = await fetch(`/api/health-records/${record.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approveReview: true }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || 'Could not confirm this report');
+      }
+      const updatedRecord = await response.json() as HealthRecord;
+      setRecords((current) => filterTag === 'needs_review'
+        ? current.filter((item) => item.id !== record.id)
+        : current.map((item) => item.id === record.id ? updatedRecord : item));
+      window.dispatchEvent(new Event('sanovault:needs-review-changed'));
+      notify('Report confirmed.', 'success');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not confirm this report', 'error');
+    } finally {
+      setApprovingRecordId(null);
+    }
+  };
+
   const handleTagClick = (tag: string) => {
     setFilterTag(tag);
     setShowFilters(true);
     updateQuery({ tag });
+  };
+
+  const createSelectedShareLinks = async () => {
+    const selected = records.filter((record) => selectedRecordIds.includes(record.id) && record.documentId);
+    if (!selected.length) return;
+    setCreatingShareLinks(true);
+    try {
+      const links: string[] = [];
+      for (const record of selected) {
+        const response = await fetch(`/api/documents/${record.documentId}/share`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: record.title || getRecordTypeLabel(record.recordType), expiresInDays: 7 }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not create a share link');
+        links.push(data.share.shareUrl as string);
+      }
+      const message = `SanoVault records for ${selected.map((record) => `${patients[record.patientId]?.firstName || 'family member'}: ${record.title || getRecordTypeLabel(record.recordType)} — ${links[selected.indexOf(record)]}`).join('\n')}`;
+      if (typeof navigator.share === 'function') await navigator.share({ title: 'SanoVault records', text: message });
+      else {
+        await navigator.clipboard.writeText(message);
+        notify('Seven-day links copied. Share them with the doctor.', 'success');
+      }
+      setSelectedRecordIds([]);
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        notify(err instanceof Error ? err.message : 'Could not create share links', 'error');
+      }
+    } finally {
+      setCreatingShareLinks(false);
+    }
   };
 
   const clearFilters = () => {
@@ -233,7 +308,7 @@ function HealthRecordsContent() {
     setFilterTag('');
     setStartDate('');
     setEndDate('');
-    updateQuery({ keyword: '', source: '', recordType: '', tag: '', startDate: '', endDate: '' });
+    updateQuery({ keyword: '', source: '', recordType: '', tag: '', startDate: '', endDate: '', familyInbox: '' });
   };
 
   const hasActiveFilters = keyword || filterSource || filterRecordType || filterTag || startDate || endDate;
@@ -286,10 +361,14 @@ function HealthRecordsContent() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => handleTagClick('needs_review')}
+                onClick={() => {
+                  setFilterTag('needs_review');
+                  setShowFilters(true);
+                  updateQuery({ tag: 'needs_review', familyInbox: 'true', patientId: '' });
+                }}
                 className={`inline-flex min-h-12 items-center text-base font-medium ${filterTag === 'needs_review' ? 'text-ink underline' : 'text-coral hover:underline'}`}
               >
-                Needs review
+                Review everyone{needsReviewCount > 0 ? ` (${needsReviewCount})` : ''}
               </button>
               <Link
                 href={selectedPatientId ? `/reports/blood-summary?patientId=${selectedPatientId}` : '/reports/blood-summary'}
@@ -326,6 +405,11 @@ function HealthRecordsContent() {
           ) : (
             <>
               <div className="mb-6 rounded-xl border border-silver bg-white p-6 shadow-sm">
+                {needsReviewCount > 0 && (
+                  <p className="mb-4 text-sm text-slate" role="status">
+                    The review count covers everyone in this family folder. Reports below are filtered by the selected person.
+                  </p>
+                )}
                 <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)_auto] md:items-end">
                   <div>
                     <label htmlFor="patient" className="mb-2 block text-sm font-medium text-blue-slate">
@@ -627,9 +711,28 @@ function HealthRecordsContent() {
                   <div className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
                     {records.length} report{records.length !== 1 ? 's' : ''}
                   </div>
+                  {records.some((record) => record.documentId) && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                      <p className="text-sm text-gray-600">Select reports to create individual links that expire in 7 days.</p>
+                      <button type="button" onClick={() => void createSelectedShareLinks()} disabled={!selectedRecordIds.length || creatingShareLinks} className={svBtnPrimary}>
+                        {creatingShareLinks ? 'Preparing links…' : `Share selected (${selectedRecordIds.length})`}
+                      </button>
+                    </div>
+                  )}
                   <ul className="divide-y divide-gray-100">
                     {records.map((record) => (
                       <li key={record.id} className="flex items-start gap-3 px-4 py-3">
+                        {record.documentId && (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${record.title || getRecordTypeLabel(record.recordType)} for sharing`}
+                            checked={selectedRecordIds.includes(record.id)}
+                            onChange={(event) => setSelectedRecordIds((current) => event.target.checked
+                              ? [...current, record.id]
+                              : current.filter((id) => id !== record.id))}
+                            className="mt-1 h-5 w-5 rounded border-gray-300 text-coral focus:ring-coral"
+                          />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-gray-950">
                             {record.title || getRecordTypeLabel(record.recordType)}
@@ -665,6 +768,16 @@ function HealthRecordsContent() {
                           )}
                         </div>
                         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                          {record.tags.includes('needs_review') && (
+                            <button
+                              type="button"
+                              onClick={() => void handleApproveReview(record)}
+                              disabled={approvingRecordId === record.id}
+                              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-brand-tint px-3 text-sm font-medium text-brand-strong hover:bg-blue-100 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {approvingRecordId === record.id ? 'Confirming…' : 'Confirm'}
+                            </button>
+                          )}
                           <Link
                             href={`/health-records/${record.id}`}
                             className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-50 px-3 text-sm font-medium text-coral hover:bg-blue-100"

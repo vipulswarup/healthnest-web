@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import CookieConsent from '@/components/privacy/CookieConsent';
 import Providers from "./providers";
 import BetaAcknowledgementGate from '@/components/auth/BetaAcknowledgementGate';
 import {
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
   authors: [{ name: SITE_NAME, url: CANONICAL_SITE_URL }],
   openGraph: {
     type: "website",
-    locale: "en_IN",
+    locale: "en",
     url: CANONICAL_SITE_URL,
     siteName: SITE_NAME,
     title: SITE_TITLE,
@@ -64,11 +65,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en-IN">
+    <html lang="en">
       <body className="antialiased">
         <Providers>
           <BetaAcknowledgementGate />
           {children}
+          <CookieConsent />
         </Providers>
       </body>
     </html>

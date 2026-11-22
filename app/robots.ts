@@ -23,9 +23,11 @@ export default function robots(): MetadataRoute.Robots {
         '/beta-acknowledgement',
         '/auth/',
         '/share/',
+        '/care/',
+        '/care-shares',
+        '/settings',
       ],
     },
     sitemap: `${CANONICAL_SITE_URL}/sitemap.xml`,
-    host: CANONICAL_SITE_URL,
   };
 }

@@ -33,6 +33,11 @@ function SignUpContent() {
     e.preventDefault();
     setError('');
 
+    if (!firstName.trim()) {
+      setError('Enter your first name.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -47,7 +52,7 @@ function SignUpContent() {
 
     try {
       const result = await authClient.signUp.email({
-        name: [firstName, lastName].filter(Boolean).join(' '),
+        name: [firstName.trim(), lastName.trim()].filter(Boolean).join(' '),
         email: email.trim().toLowerCase(),
         password,
         callbackURL: callbackUrl,
@@ -131,6 +136,8 @@ function SignUpContent() {
                 name="firstName"
                 type="text"
                 required
+                maxLength={160}
+                autoComplete="given-name"
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-coral focus:border-coral sm:text-sm"
                 placeholder="First name"
                 value={firstName}
@@ -144,6 +151,8 @@ function SignUpContent() {
               <input
                 id="lastName"
                 name="lastName"
+                maxLength={160}
+                autoComplete="family-name"
                 type="text"
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-coral focus:border-coral sm:text-sm"
                 placeholder="Last name (optional)"
@@ -179,6 +188,7 @@ function SignUpContent() {
                   autoComplete="new-password"
                   required
                   minLength={8}
+                  maxLength={128}
                   className="mt-1 appearance-none relative block w-full px-3 py-2 pr-16 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-coral focus:border-coral sm:text-sm"
                   placeholder="Password (min 8 characters)"
                   value={password}
@@ -199,6 +209,7 @@ function SignUpContent() {
                   autoComplete="new-password"
                   required
                   minLength={8}
+                  maxLength={128}
                   className="mt-1 appearance-none relative block w-full px-3 py-2 pr-16 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-coral focus:border-coral sm:text-sm"
                   placeholder="Confirm password"
                   value={confirmPassword}
@@ -229,6 +240,7 @@ function SignUpContent() {
           </button>
         )}
 
+        <p className="text-sm leading-6 text-gray-600">By creating an account, you agree to our <a href="/terms" className="text-coral underline">Terms and Conditions</a>. Read our <a href="/privacy" className="text-coral underline">Privacy Policy</a> to understand how we handle your records.</p>
         <div className="text-center">
           <a
             href={signInHref}

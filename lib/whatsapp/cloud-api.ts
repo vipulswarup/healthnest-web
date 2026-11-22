@@ -1,3 +1,4 @@
+import 'server-only';
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v21.0';

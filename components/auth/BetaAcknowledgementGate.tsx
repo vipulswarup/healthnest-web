@@ -1,5 +1,6 @@
 'use client';
 
+import { isMarketingPath } from '@/lib/marketing-routes';
 import { useSession } from '@/lib/auth/client';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -9,8 +10,9 @@ const ACKNOWLEDGEMENT_PATH = '/beta-acknowledgement';
 export default function BetaAcknowledgementGate() {
   const pathname = usePathname();
   if (
-    pathname === '/'
+    isMarketingPath(pathname)
     || pathname === '/privacy'
+    || pathname === '/terms'
     || pathname === '/delete-account'
     || pathname === '/pricing'
     || pathname === '/dashboard'

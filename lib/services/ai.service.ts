@@ -1,3 +1,4 @@
+import 'server-only';
 import { AppError } from '@/lib/middleware/error-handler';
 import { classificationPrompt } from './prompts/classification.prompt';
 import { extractionPrompt } from './prompts/extraction.prompt';

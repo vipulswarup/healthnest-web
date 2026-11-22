@@ -6,9 +6,9 @@ import { JsonLd } from '@/components/marketing/JsonLd';
 import { MarketingCta, MarketingShell } from '@/components/marketing/MarketingShell';
 import { breadcrumbJsonLd, faqJsonLd, publicPageMetadata, type BreadcrumbItem, type FaqItem } from '@/lib/seo';
 
-const TITLE = "Family Health Records App | Keep Your Family's Medical History Together";
+const TITLE = 'Family Health Records in One Place | SanoVault';
 const DESCRIPTION =
-  "Keep medical records for yourself, your children, and ageing parents in one family folder. Organise reports, medicines and history from different doctors, with access only for people you invite.";
+  "Keep medical records for yourself, your children and ageing parents in one SanoVault family folder, with access only for people you invite.";
 const PATH = '/family-health-records';
 
 const CRUMBS: BreadcrumbItem[] = [
@@ -37,10 +37,6 @@ const FAQS: FaqItem[] = [
     question: 'Can we keep a medicine list for each person?',
     answer: 'Yes. Each person can have a medicine list you can print for a clinic visit, along with their uploaded reports.',
   },
-  {
-    question: 'Is this connected to ABHA?',
-    answer: 'No. SanoVault does not fetch family records from ABHA. You can optionally save an ABHA number on a person\'s profile. The files in the folder are ones you add.',
-  },
 ];
 
 export const metadata: Metadata = publicPageMetadata({
@@ -62,7 +58,7 @@ export default function FamilyHealthRecordsPage() {
             One Place for Your Family&apos;s Health Records
           </h1>
           <p className="mt-4 text-lg leading-7 text-blue-slate">
-            Indian households often hold records for more than one person: a child&apos;s labs, a parent&apos;s discharge summary, your own prescriptions. SanoVault is a family folder for that history — not a hospital login, and not a substitute for the people whose care it is.
+            Families often hold records for more than one person: a child&apos;s lab results, a parent&apos;s discharge summary, or your own prescriptions. SanoVault brings those records together in a family folder while keeping each person&apos;s history distinct.
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">A household folder, not a shared public profile</h2>
@@ -76,7 +72,7 @@ export default function FamilyHealthRecordsPage() {
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Your own records</h2>
           <p className="mt-3 text-base leading-7 text-blue-slate">
             Start with yourself. Upload reports from different doctors and labs, keep a medicine list, and log blood pressure if you track it. That{' '}
-            <Link href="/personal-health-record-app-india" className="font-medium text-coral hover:underline">
+            <Link href="/personal-health-record-app" className="font-medium text-coral hover:underline">
               personal health record
             </Link>
             {' '}sits in the same household as everyone else you add, so you are not maintaining five separate logins for one family.
@@ -96,6 +92,13 @@ export default function FamilyHealthRecordsPage() {
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
             This is not a claim that adult children control a parent&apos;s healthcare. It is a filing system for documents a household is already managing together.
+          </p>
+          <p className="mt-3 text-base leading-7 text-blue-slate">
+            For a step-by-step approach, read{' '}
+            <Link href="/guides/medical-records-for-elderly-parents" className="font-medium text-coral hover:underline">
+              how to keep medical records for elderly parents
+            </Link>
+            .
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Records from different doctors</h2>
@@ -128,7 +131,9 @@ export default function FamilyHealthRecordsPage() {
           <p className="mt-3 text-base leading-7 text-blue-slate">
             Details of storage and sharing are on the{' '}
             <Link href="/privacy" className="font-medium text-coral hover:underline">privacy page</Link>.
-            The product is in beta and is not certified under HIPAA, GDPR, or India&apos;s DPDP Act.
+            SanoVault is in beta. Read the{' '}
+            <Link href="/privacy" className="font-medium text-coral hover:underline">privacy page</Link>
+            {' '}for details about data handling.
           </p>
 
           <div className="mt-12">

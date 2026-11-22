@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { isMarketingPath } from '@/lib/marketing-routes';
 import { useSession } from '@/lib/auth/client';
 
 export type HouseholdSummary = {
@@ -74,7 +75,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     [householdId, households, hydrate, loading, refresh, setActive],
   );
 
-  const skipSessionLoad = pathname === '/dashboard' || pathname.startsWith('/auth/');
+  const skipSessionLoad = isMarketingPath(pathname) || pathname === '/dashboard' || pathname.startsWith('/auth/');
 
   return (
     <HouseholdContext.Provider value={value}>

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { BETA_ACKNOWLEDGEMENT_TEXT } from "@/lib/legal/beta-acknowledgement";
-import { faqJsonLd, type FaqItem } from "@/lib/seo";
+import { ARGALI_ID, ORGANIZATION_ID, faqJsonLd, type FaqItem } from "@/lib/seo";
 import {
   CANONICAL_SITE_URL,
   SITE_DESCRIPTION,
+  APP_STORE_URL,
   SITE_NAME,
   SITE_TAGLINE,
 } from "@/lib/site";
@@ -58,7 +59,7 @@ const STEPS = [
     step: "2",
     title: "Add the records you have",
     description:
-      "Upload PDFs and photos, or scan paper with your phone. After linking a number, you can also forward files to SanoVault on WhatsApp.",
+      "Upload PDFs and photos, or scan paper with your phone.",
   },
   {
     step: "3",
@@ -95,9 +96,9 @@ const HOME_FAQS: FaqItem[] = [
       "You can send a time-limited link for a specific document, or take a one-page summary and a medicine list to the appointment. There is no public profile.",
   },
   {
-    question: "Is SanoVault connected to ABHA?",
+    question: "Does SanoVault automatically get records from providers?",
     answer:
-      "No. SanoVault does not currently fetch records from ABHA or ABDM. You can optionally save an ABHA number on a person's profile. Records in SanoVault are ones you add yourself. ABHA is India's health ID under the Ayushman Bharat Digital Mission; not every past report will be available there.",
+      "No. You add the records you have by uploading or scanning them. SanoVault does not currently retrieve records from hospital or lab systems.",
   },
   {
     question: "What kinds of medical documents can I store?",
@@ -106,33 +107,101 @@ const HOME_FAQS: FaqItem[] = [
   },
 ];
 
+const GUIDE_LINKS = [
+  {
+    href: "/guides/how-to-organize-medical-records",
+    title: "How to organise medical records",
+    description:
+      "Which papers to keep, how to name files, and what to take to a doctor.",
+  },
+  {
+    href: "/guides/scan-old-medical-reports",
+    title: "Scan old paper medical reports",
+    description:
+      "Digitise old reports with just your phone, and what to do with the originals.",
+  },
+  {
+    href: "/guides/medical-records-for-elderly-parents",
+    title: "Medical records for elderly parents",
+    description:
+      "Where to start, what to gather, and how to share with siblings.",
+  },
+  {
+    href: "/guides/is-it-safe-to-store-medical-records-online",
+    title: "Is it safe to store medical records online?",
+    description:
+      "Where the real risks are, and a checklist for judging any app.",
+  },
+  {
+    href: "/personal-health-record-app",
+    title: "Personal health records for families",
+    description:
+      "What a PHR is and how it differs from a hospital record.",
+  },
+  {
+    href: "/family-health-records",
+    title: "Family health records",
+    description:
+      "Keep records for children, parents and yourself in one folder.",
+  },
+];
+
 const jsonLd = {
   "@context": "https://schema.org",
   "@graph": [
     {
       "@type": "WebSite",
+      "@id": `${CANONICAL_SITE_URL}/#website`,
       name: SITE_NAME,
       url: CANONICAL_SITE_URL,
       description: SITE_DESCRIPTION,
+      inLanguage: "en",
+      publisher: { "@id": ORGANIZATION_ID },
     },
     {
       "@type": "SoftwareApplication",
+      "@id": `${CANONICAL_SITE_URL}/#software`,
       name: SITE_NAME,
       url: CANONICAL_SITE_URL,
       applicationCategory: "HealthApplication",
-      operatingSystem: "Web",
+      operatingSystem: "Web, iOS",
+      downloadUrl: APP_STORE_URL,
+      installUrl: APP_STORE_URL,
       description: SITE_DESCRIPTION,
+      publisher: { "@id": ORGANIZATION_ID },
       offers: {
         "@type": "Offer",
         price: "0",
-        priceCurrency: "INR",
       },
     },
     {
       "@type": "Organization",
+      "@id": ORGANIZATION_ID,
       name: SITE_NAME,
       url: CANONICAL_SITE_URL,
       logo: `${CANONICAL_SITE_URL}/logo.png`,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "4th Floor, Statesman House, Barakhamba Road",
+        addressLocality: "New Delhi",
+        postalCode: "110001",
+        addressCountry: "IN",
+      },
+      contactPoint: {
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        email: "support@eisenvault.com",
+        availableLanguage: ["en"],
+      },
+      // No official social profiles or Android listing exist yet; add to sameAs when they do.
+      sameAs: ["https://www.eisenvault.com/", APP_STORE_URL],
+      parentOrganization: { "@id": ARGALI_ID },
+    },
+    {
+      "@type": "Organization",
+      "@id": ARGALI_ID,
+      name: "Argali Knowledge Services Private Limited",
+      url: "https://www.eisenvault.com/",
     },
   ],
 };
@@ -148,7 +217,7 @@ export function LandingPage() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-2 lg:py-24">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-slate">
-                Personal health record for Indian families
+                Personal health record for families
               </p>
               <h1 className="mt-3 text-4xl font-bold tracking-tight text-ink sm:text-5xl">
                 {SITE_TAGLINE}
@@ -169,11 +238,9 @@ export function LandingPage() {
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link href="/auth/signup" className="sv-btn sv-btn-primary">
-                  Create a folder
+                  Create your family folder
                 </Link>
-                <Link href="/auth/signin" className="sv-btn sv-btn-outline">
-                  Sign in
-                </Link>
+
               </div>
               <div className="mt-4">
                 <AppDownloadBadges />
@@ -226,8 +293,8 @@ export function LandingPage() {
               Health records rarely live in one place
             </h2>
             <p className="mt-3 max-w-2xl text-base leading-7 text-blue-slate">
-              A person&apos;s medical information in India is often spread
-              across hospitals, clinics, laboratories, PDFs, paper
+              A person&apos;s medical information is often spread across
+              hospitals, clinics, laboratories, PDFs, paper
               prescriptions, email, WhatsApp, and different portals. Older
               reports may never have been digitised. There is often no single
               longitudinal view of that history.
@@ -268,7 +335,7 @@ export function LandingPage() {
             <p className="mt-3 max-w-2xl text-base leading-7 text-blue-slate">
               SanoVault is a{" "}
               <Link
-                href="/personal-health-record-app-india"
+                href="/personal-health-record-app"
                 className="font-medium text-ink underline decoration-sage underline-offset-4 hover:text-slate"
               >
                 personal health record
@@ -278,8 +345,8 @@ export function LandingPage() {
               them against each person in your household.
             </p>
             <p className="mt-4 max-w-2xl text-base leading-7 text-blue-slate">
-              It is not a hospital system, and it is not a replacement for ABHA.
-              It is a place to keep the complete history you actually have.
+              It is not a hospital system. It is a place to organise the records
+              you already have across providers.
             </p>
           </div>
         </section>
@@ -459,7 +526,44 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="border-t border-silver/70 bg-background">
+        <section
+          className="border-t border-silver/70 bg-background"
+          aria-labelledby="guides-heading"
+        >
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+            <h2
+              id="guides-heading"
+              className="text-2xl font-bold tracking-tight sm:text-3xl"
+            >
+              Guides and explainers
+            </h2>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-blue-slate">
+              Plain-language help for keeping your family&apos;s medical
+              records in order.{" "}
+              <Link href="/guides" className="font-medium text-coral hover:underline">
+                See all guides
+              </Link>
+              .
+            </p>
+            <ul className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {GUIDE_LINKS.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="block h-full rounded-2xl border border-silver bg-white p-6 hover:border-sage"
+                  >
+                    <h3 className="font-semibold text-ink">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-blue-slate">
+                      {item.description}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-silver/70">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
             <FaqSection items={HOME_FAQS} />
           </div>

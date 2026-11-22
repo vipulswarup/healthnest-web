@@ -16,10 +16,12 @@ const scriptSrc = [
 ].filter(Boolean).join(" ");
 
 const securityHeaders = [
+  ...(process.env.NODE_ENV === "production" ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
   {
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
+      ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),
       "base-uri 'self'",
       "object-src 'none'",
       "form-action 'self'",
@@ -35,7 +37,7 @@ const securityHeaders = [
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Referrer-Policy", value: "no-referrer" },
   {
     key: "Permissions-Policy",
     value: "camera=(self), geolocation=(), microphone=(), payment=(), usb=()",
@@ -72,6 +74,10 @@ const privatePageSources = [
   "/beta-acknowledgement",
   "/auth/:path*",
   "/share/:path*",
+  "/care/:path*",
+  "/care-shares",
+  "/settings",
+  "/settings/:path*",
 ];
 
 const nextConfig: NextConfig = {
@@ -91,13 +97,35 @@ const nextConfig: NextConfig = {
     ],
   },
   async redirects() {
-    return [
+    const publicPositioningRedirects = [
       {
-        source: "/sites.xml",
-        destination: "/sitemap.xml",
+        source: '/personal-health-record-app-india',
+        destination: '/personal-health-record-app',
+        permanent: true,
+      },
+      {
+        source: '/best-personal-health-record-apps-india',
+        destination: '/personal-health-record-app',
+        permanent: true,
+      },
+      {
+        source: '/guides/abha-vs-personal-health-record',
+        destination: '/personal-health-record-app',
         permanent: true,
       },
     ];
+
+    return process.env.NODE_ENV === 'production'
+      ? [
+          ...publicPositioningRedirects,
+          {
+            source: '/:path*',
+            has: [{ type: 'header' as const, key: 'x-forwarded-proto', value: 'http' }],
+            destination: 'https://www.sanovault.com/:path*',
+            permanent: true,
+          },
+        ]
+      : publicPositioningRedirects;
   },
   async headers() {
     return [

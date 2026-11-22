@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { Breadcrumbs } from '@/components/marketing/Breadcrumbs';
 import { FaqSection } from '@/components/marketing/FaqSection';
 import { JsonLd } from '@/components/marketing/JsonLd';
+import { GuideByline, guideDates } from '@/components/marketing/GuideByline';
 import { MarketingCta, MarketingShell } from '@/components/marketing/MarketingShell';
-import { breadcrumbJsonLd, faqJsonLd, publicPageMetadata, type BreadcrumbItem, type FaqItem } from '@/lib/seo';
+import { articleJsonLd, breadcrumbJsonLd, faqJsonLd, publicPageMetadata, type BreadcrumbItem, type FaqItem } from '@/lib/seo';
 
-const TITLE = 'How to Organize Your Medical Records: A Practical Guide | SanoVault';
+const TITLE = 'How to Organize Your Medical Records | SanoVault';
 const DESCRIPTION =
-  'A practical guide to organising medical records in India — which papers to keep, how to digitise old reports, name files, back them up, and prepare a concise set before a doctor visit.';
+  "A practical guide to organising medical records: which papers to keep, how to digitise old reports, name files, and prepare for a doctor visit.";
 const PATH = '/guides/how-to-organize-medical-records';
 
 const CRUMBS: BreadcrumbItem[] = [
@@ -43,11 +44,13 @@ export const metadata: Metadata = publicPageMetadata({
   title: TITLE,
   description: DESCRIPTION,
   path: PATH,
+  type: 'article',
 });
 
 export default function OrganizeMedicalRecordsGuidePage() {
   return (
     <MarketingShell>
+      <JsonLd data={articleJsonLd({ headline: 'How to Organize Your Medical Records', description: DESCRIPTION, path: PATH, ...guideDates(PATH) })} />
       <JsonLd data={breadcrumbJsonLd(CRUMBS)} />
       <JsonLd data={faqJsonLd(FAQS)} />
 
@@ -58,6 +61,7 @@ export default function OrganizeMedicalRecordsGuidePage() {
           <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
             How to Organize Your Medical Records
           </h1>
+          <GuideByline path={PATH} />
           <p className="mt-4 text-lg leading-7 text-blue-slate">
             This is a practical way to keep medical records you can actually find — on paper, on a computer, or in an app. You do not need special software to follow it. The aim is a dated, named set of documents for each person, not a perfect archive of every slip.
           </p>
@@ -92,7 +96,9 @@ export default function OrganizeMedicalRecordsGuidePage() {
             Photograph or scan pages in good light, one page at a time, without covering the date or the letterhead. A phone camera is enough if the text is readable. Keep the original of discharge summaries and major imaging reports in a labelled envelope even after you digitise them.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            You do not have to digitise a lifetime in one weekend. Start with the last two years and anything that involved a hospital stay.
+            For a step-by-step method, see{' '}
+            <Link href="/guides/scan-old-medical-reports" className="font-medium text-coral hover:underline">how to scan old paper medical reports</Link>.
+            {' '}You do not have to digitise a lifetime in one weekend. Start with the last two years and anything that involved a hospital stay.
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Prescriptions</h2>
@@ -160,7 +166,9 @@ export default function OrganizeMedicalRecordsGuidePage() {
             Medical documents are sensitive. Prefer storage you control. Do not post reports in large family groups. Lock the phone and computer you use. If you share a file with a clinic, send only what they need, and avoid leaving copies on shop or hospital public computers.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            India&apos;s Digital Personal Data Protection Act (DPDP) governs personal data in many contexts; this guide is not legal advice. Treat health files as confidential regardless of which tool you use.
+            For a fuller checklist, see{' '}
+            <Link href="/guides/is-it-safe-to-store-medical-records-online" className="font-medium text-coral hover:underline">is it safe to store medical records online</Link>.
+            Privacy rules depend on where you live and which services you use. This guide is not legal advice; treat health files as confidential regardless of which tool you use.
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">What to take to a doctor visit</h2>
@@ -181,13 +189,13 @@ export default function OrganizeMedicalRecordsGuidePage() {
           <h2 className="mt-12 text-2xl font-bold tracking-tight">When a personal health record app helps</h2>
           <p className="mt-3 text-base leading-7 text-blue-slate">
             Folders and paper work until the volume grows, several people are involved, or you need a medicine list and last month&apos;s PDF on a clinic morning. A{' '}
-            <Link href="/personal-health-record-app-india" className="font-medium text-coral hover:underline">
+            <Link href="/personal-health-record-app" className="font-medium text-coral hover:underline">
               personal health record app
             </Link>
             {' '}can store uploads against each person, keep medicines beside the files, and produce a short set for a visit.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            SanoVault is one such folder for Indian families: you upload or scan reports, file them per person, and share a specific document only when you choose. It does not fetch records from ABHA or from hospital portals. It does not give medical advice. If you use it, read how{' '}
+            SanoVault is one such folder for families: you upload or scan reports, file them per person, and share a specific document only when you choose. It does not fetch records from hospital portals or give medical advice. If you use it, read how{' '}
             <Link href="/privacy" className="font-medium text-coral hover:underline">records are handled</Link>
             {' '}first.
           </p>

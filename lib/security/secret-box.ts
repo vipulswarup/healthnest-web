@@ -1,3 +1,4 @@
+import 'server-only';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { sha256Hex } from '@/lib/security/checksum';
 import { AppError } from '@/lib/middleware/error-handler';

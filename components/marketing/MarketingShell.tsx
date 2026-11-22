@@ -1,3 +1,4 @@
+import { CookieSettingsButton } from "@/components/privacy/CookieConsent";
 import Image from "next/image";
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/site";
@@ -11,7 +12,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
             <Link href="/" className="flex shrink-0 items-center gap-2.5">
               <Image
                 src="/logo.png"
-                alt="SanoVault"
+                alt=""
                 width={40}
                 height={40}
                 className="rounded-full"
@@ -26,7 +27,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
               aria-label="Topics"
             >
               <Link
-                href="/personal-health-record-app-india"
+                href="/personal-health-record-app"
                 className="rounded-lg px-3 py-2 text-sm font-medium text-slate hover:bg-white hover:text-ink"
               >
                 Personal health record
@@ -38,10 +39,10 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
                 Family records
               </Link>
               <Link
-                href="/guides/how-to-organize-medical-records"
+                href="/guides"
                 className="rounded-lg px-3 py-2 text-sm font-medium text-slate hover:bg-white hover:text-ink"
               >
-                Organise records
+                Guides
               </Link>
             </nav>
           </div>
@@ -63,13 +64,18 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
             </Link>
             <Link
               href="/auth/signup"
-              className="sv-btn sv-btn-primary !min-h-10 !px-4 !text-sm"
+              className="sv-btn sv-btn-primary !min-h-11 !px-3 !text-sm max-sm:max-w-36"
             >
-              Get started
+              Create your family folder
             </Link>
           </nav>
         </div>
       </header>
+      <nav aria-label="Mobile topics" className="flex flex-wrap gap-x-5 gap-y-1 border-b border-silver px-4 py-2 text-sm text-slate lg:hidden">
+        <Link href="/family-health-records" className="inline-flex min-h-11 items-center">Family records</Link>
+        <Link href="/guides" className="inline-flex min-h-11 items-center">Guides</Link>
+        <Link href="/pricing" className="inline-flex min-h-11 items-center">Pricing</Link>
+      </nav>
       {children}
       <footer className="border-t border-silver/70 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-blue-slate sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -78,7 +84,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
           </p>
           <nav className="flex flex-wrap gap-x-5 gap-y-2" aria-label="Footer">
             <Link
-              href="/personal-health-record-app-india"
+              href="/personal-health-record-app"
               className="hover:text-ink"
             >
               Personal health record
@@ -86,24 +92,50 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
             <Link href="/family-health-records" className="hover:text-ink">
               Family health records
             </Link>
+            <Link href="/guides" className="hover:text-ink">
+              All guides
+            </Link>
             <Link
               href="/guides/how-to-organize-medical-records"
               className="hover:text-ink"
             >
               How to organise medical records
             </Link>
+            <Link
+              href="/guides/scan-old-medical-reports"
+              className="hover:text-ink"
+            >
+              Scan old medical reports
+            </Link>
+            <Link
+              href="/guides/medical-records-for-elderly-parents"
+              className="hover:text-ink"
+            >
+              Medical records for elderly parents
+            </Link>
+            <Link
+              href="/guides/is-it-safe-to-store-medical-records-online"
+              className="hover:text-ink"
+            >
+              Is it safe to store records online?
+            </Link>
             <Link href="/pricing" className="hover:text-ink">
               Pricing
+            </Link>
+            <Link href="/about" className="hover:text-ink">
+              About
             </Link>
             <Link href="/delete-account" className="hover:underline">Delete account</Link>
           <Link href="/privacy" className="hover:text-ink">
               Privacy
             </Link>
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <CookieSettingsButton />
             <Link href="/auth/signin" className="hover:text-ink">
               Sign in
             </Link>
             <Link href="/auth/signup" className="hover:text-ink">
-              Get started
+              Create your family folder
             </Link>
           </nav>
         </div>
@@ -139,14 +171,9 @@ export function MarketingCta({
             href="/auth/signup"
             className="sv-btn sv-btn-primary !bg-cream !text-ink hover:!bg-white"
           >
-            Get started
+            Create your family folder
           </Link>
-          <Link
-            href="/auth/signin"
-            className="sv-btn !border !border-silver/40 !bg-transparent !text-white hover:!bg-white/10"
-          >
-            Sign in
-          </Link>
+
         </div>
       </div>
     </section>

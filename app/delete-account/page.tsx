@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MarketingShell } from '@/components/marketing/MarketingShell';
+import { publicPageMetadata } from '@/lib/seo';
 import { DeleteAccount } from '@/components/account/DeleteAccount';
-export const metadata: Metadata = { title: 'Delete your SanoVault account', alternates: { canonical: '/delete-account' } };
+export const metadata: Metadata = publicPageMetadata({
+  title: 'Delete your SanoVault account · SanoVault',
+  description: 'How to delete your SanoVault account, what happens to family folders and records, and how to request deletion by email if you cannot sign in.',
+  path: '/delete-account',
+  noindex: true,
+});
 export default function DeleteAccountPage() {
   return <MarketingShell><main className="mx-auto max-w-2xl px-4 py-12 space-y-6">
     <h1 className="text-3xl font-bold">Delete your SanoVault account</h1>

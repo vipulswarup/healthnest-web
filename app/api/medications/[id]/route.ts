@@ -37,6 +37,10 @@ const updateMedicationSchema = withMedicationDateOrder(z.object({
   indication: z.string().max(500).optional(),
   stoppedReason: z.string().max(500).optional(),
   isActive: z.boolean().optional(),
+  reorderIntervalDays: z.number().int().min(7).max(365).nullable().optional(),
+  reorderNextDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  reorderStatus: z.enum(['ready', 'ordered']).optional(),
+  reorderNotifiedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   tags: z.array(z.string()).optional(),
   composition: medicationCompositionSchema.optional(),
 }));
@@ -103,6 +107,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         indication = COALESCE(${data.indication ?? null}, m.indication),
         stopped_reason = COALESCE(${data.stoppedReason ?? null}, m.stopped_reason),
         is_active = COALESCE(${data.isActive ?? null}, m.is_active),
+        reorder_interval_days = CASE
+          WHEN ${data.reorderIntervalDays === null} THEN NULL
+          ELSE COALESCE(${data.reorderIntervalDays ?? null}, m.reorder_interval_days)
+        END,
+        reorder_next_date = CASE
+          WHEN ${data.reorderNextDate === null} OR ${data.reorderIntervalDays === null} THEN NULL
+          ELSE COALESCE(${data.reorderNextDate ?? null}::date, m.reorder_next_date)
+        END,
+        reorder_status = COALESCE(${data.reorderStatus ?? null}, m.reorder_status),
+        reorder_notified_date = CASE
+          WHEN ${data.reorderNotifiedDate === null} OR ${data.reorderNextDate !== undefined} THEN ${data.reorderNotifiedDate ?? null}::date
+          ELSE m.reorder_notified_date
+        END,
         tags = COALESCE(${data.tags ?? null}, m.tags),
         updated_at = NOW()
       FROM patients p

@@ -6,10 +6,10 @@ import { JsonLd } from '@/components/marketing/JsonLd';
 import { MarketingCta, MarketingShell } from '@/components/marketing/MarketingShell';
 import { breadcrumbJsonLd, faqJsonLd, publicPageMetadata, type BreadcrumbItem, type FaqItem } from '@/lib/seo';
 
-const TITLE = 'Personal Health Record App for Indian Families | SanoVault';
+const TITLE = 'Personal Health Record App for Families | SanoVault';
 const DESCRIPTION =
-  'A personal health record is a health history you keep yourself. SanoVault helps Indian families organise lab reports, prescriptions, scans and medicines from different hospitals — including records that are not in one hospital system.';
-const PATH = '/personal-health-record-app-india';
+  'SanoVault helps families organise lab reports, prescriptions, scans, medicines and visit notes from different providers in one searchable place.';
+const PATH = '/personal-health-record-app';
 
 const CRUMBS: BreadcrumbItem[] = [
   { name: 'Home', path: '/' },
@@ -24,10 +24,6 @@ const FAQS: FaqItem[] = [
   {
     question: 'Is a personal health record the same as a hospital record?',
     answer: 'No. A hospital record is what that hospital keeps. A personal health record is the set of documents and notes you keep yourself, which can include files from many hospitals, labs and doctors.',
-  },
-  {
-    question: 'Can SanoVault replace ABHA?',
-    answer: 'No. ABHA is India\'s national health ID under ABDM. SanoVault does not fetch records from ABHA, and it is not a replacement for it. You can optionally save an ABHA number on a person\'s profile for your own reference.',
   },
   {
     question: 'Can I store records from more than one hospital?',
@@ -62,7 +58,7 @@ export default function PersonalHealthRecordPage() {
             Your Personal Health Record, All in One Place
           </h1>
           <p className="mt-4 text-lg leading-7 text-blue-slate">
-            SanoVault is a personal health record app for people and families in India. It helps you keep medical documents from different doctors, hospitals and labs together, including older files that may never appear in one hospital system.
+            SanoVault is a personal health record app for people and families. It helps you organise medical documents from different doctors, hospitals and labs, including older files that may never appear in one provider system.
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">What is a personal health record?</h2>
@@ -75,7 +71,7 @@ export default function PersonalHealthRecordPage() {
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Why health records become fragmented</h2>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            Care in India often involves more than one hospital, a neighbourhood clinic, a diagnostic laboratory, and an imaging centre. Reports arrive as printouts, PDFs, WhatsApp images and email attachments. Hospital apps and portals usually show only what that institution holds.
+            Care often involves more than one hospital, clinic, laboratory or imaging centre. Reports arrive as printouts, PDFs, messages and email attachments. Provider portals usually show only what that institution holds.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
             Older paper files may never have been scanned. A new specialist then has to reconstruct history from whatever you can find that week. That is a records problem, not a medical-advice problem.
@@ -108,7 +104,7 @@ export default function PersonalHealthRecordPage() {
             In SanoVault you can upload PDFs, photos and office files, and scan paper with your phone. Records can be filed as lab reports, prescriptions, consultation notes, imaging reports, discharge summaries, vaccination records, vitals, identity documents, or other.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            Beside the documents, you can keep a medicine list, log blood pressure, record vaccinations, and keep visit notes. After linking a WhatsApp number, you can forward a report to SanoVault and choose who it belongs to.
+            Beside the documents, you can keep a medicine list, log blood pressure, record vaccinations, and keep visit notes.
           </p>
 
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Family health records</h2>
@@ -132,27 +128,12 @@ export default function PersonalHealthRecordPage() {
             Before a visit, open that person&apos;s timeline and pick the recent labs, relevant imaging, and current medicines. SanoVault can print a medicine list and a one-page summary of labs, blood pressure and medicines to take along. If a clinician needs one file, you can send a time-limited link for that document.
           </p>
 
-          <h2 className="mt-12 text-2xl font-bold tracking-tight">How SanoVault relates to ABHA</h2>
-          <p className="mt-3 text-base leading-7 text-blue-slate">
-            ABHA (Ayushman Bharat Health Account) is a health ID issued under the{' '}
-            <a href="https://abdm.gov.in/" className="font-medium text-coral hover:underline" rel="noopener noreferrer">
-              Ayushman Bharat Digital Mission (ABDM)
-            </a>
-            , the Government of India&apos;s digital health programme. You can create and manage an ABHA number on the{' '}
-            <a href="https://abha.abdm.gov.in/" className="font-medium text-coral hover:underline" rel="noopener noreferrer">
-              official ABHA portal
-            </a>.
-          </p>
-          <p className="mt-3 text-base leading-7 text-blue-slate">
-            SanoVault is not an ABHA application. It does not currently connect to ABDM to fetch or send health records. You can optionally store an ABHA number on a person&apos;s profile for your own reference. Many older reports, private clinic notes, and files sitting on a phone will still need to be kept by you, whether or not they ever appear in an ABHA-linked view.
-          </p>
-
           <h2 className="mt-12 text-2xl font-bold tracking-tight">Privacy and who can see your folder</h2>
           <p className="mt-3 text-base leading-7 text-blue-slate">
             Uploaded files are kept in private storage. They are shown to people in your folder, unless you create a share link for a specific document. Share links can expire and can be revoked. There is no public health profile.
           </p>
           <p className="mt-3 text-base leading-7 text-blue-slate">
-            SanoVault is in beta and is not certified under HIPAA, GDPR, or India&apos;s DPDP Act. Read{' '}
+            SanoVault is in beta. Read{' '}
             <Link href="/privacy" className="font-medium text-coral hover:underline">
               how records are handled
             </Link>

@@ -8,6 +8,10 @@
     {
       "path": "/api/internal/deletions",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/internal/medication-reorders",
+      "schedule": "0 9 * * *"
     }
   ]
 }

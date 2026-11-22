@@ -1,0 +1,32 @@
+# SanoVault
+
+> SanoVault is a free (beta) personal health record app for families. Each family has a folder where members can upload or scan lab reports, prescriptions, discharge summaries and other medical papers, keep a medicine list for each person, and create time-limited share links. It is free during the beta; AI extraction and summaries may become paid later.
+
+## Who it is for, and what it is not
+
+SanoVault is for families who want to keep their own medical papers, including older paper reports and files from different hospitals and labs, in one place.
+
+- It is not a hospital system and does not give medical advice.
+- It does not currently fetch records from hospital or lab systems; you add the files you have.
+- It is available as a web app and an iOS app (https://apps.apple.com/us/app/sanovault/id6812724169). There is no Android app yet.
+- Read the privacy policy for information about data handling and service providers.
+
+## Key pages
+
+- [SanoVault home](https://www.sanovault.com/)
+- [SanoVault on the Apple App Store](https://apps.apple.com/us/app/sanovault/id6812724169)
+- [All guides](https://www.sanovault.com/guides)
+- [Personal health record app for families](https://www.sanovault.com/personal-health-record-app)
+- [Family health records](https://www.sanovault.com/family-health-records)
+- [How to organize your medical records](https://www.sanovault.com/guides/how-to-organize-medical-records)
+- [How to scan old medical reports](https://www.sanovault.com/guides/scan-old-medical-reports)
+- [Medical records for elderly parents](https://www.sanovault.com/guides/medical-records-for-elderly-parents)
+- [Is it safe to store medical records online?](https://www.sanovault.com/guides/is-it-safe-to-store-medical-records-online)
+- [Pricing](https://www.sanovault.com/pricing)
+- [About](https://www.sanovault.com/about)
+- [Privacy policy](https://www.sanovault.com/privacy)
+
+## Operator and support
+
+Operated by Argali Knowledge Services Private Limited (the EisenVault team).
+Support: support@eisenvault.com

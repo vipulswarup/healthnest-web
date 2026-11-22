@@ -92,6 +92,7 @@ function AppNavView({
   const { householdId, households, loading, setActive } = useHouseholdContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
   const moreRef = useRef<HTMLDivElement>(null);
   const { primary, more } = splitLinks(links);
 
@@ -99,6 +100,38 @@ function AppNavView({
     pathname === href || pathname.startsWith(`${href}/`);
 
   const moreActive = more.some((link) => isActive(link.href));
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshNeedsReviewCount = async () => {
+      try {
+        const response = await fetch('/api/health-records?tag=needs_review', { cache: 'no-store' });
+        if (!response.ok) return;
+        const records = await response.json();
+        if (!cancelled && Array.isArray(records)) setNeedsReviewCount(records.length);
+      } catch {
+        // Retain the last count while offline.
+      }
+    };
+    void refreshNeedsReviewCount();
+    const onCountChanged = () => void refreshNeedsReviewCount();
+    window.addEventListener('sanovault:needs-review-changed', onCountChanged);
+    window.addEventListener('focus', onCountChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sanovault:needs-review-changed', onCountChanged);
+      window.removeEventListener('focus', onCountChanged);
+    };
+  }, [pathname]);
+
+  const linkLabel = (link: NavLink) => link.label === 'Reports' && needsReviewCount > 0 ? (
+    <span className="inline-flex items-center gap-2">
+      Reports
+      <span aria-label={`${needsReviewCount} reports need review across this family folder`} className="inline-flex min-w-5 items-center justify-center rounded-full bg-peach px-1.5 py-0.5 text-xs font-semibold text-ink">
+        {needsReviewCount > 99 ? '99+' : needsReviewCount}
+      </span>
+    </span>
+  ) : link.label;
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -178,7 +211,7 @@ function AppNavView({
                           : "text-slate hover:text-ink"
                       }`}
                     >
-                      {link.label}
+                      {linkLabel(link)}
                     </Link>
                   );
                 })}
@@ -331,7 +364,7 @@ function AppNavView({
                           : "text-slate hover:bg-cream hover:text-ink"
                       }`}
                     >
-                      {link.label}
+                      {linkLabel(link)}
                     </Link>
                   );
                 })}
@@ -410,7 +443,7 @@ function AppNavView({
                     active ? "text-brand-strong font-semibold" : "text-slate"
                   }`}
                 >
-                  {link.label}
+                  {linkLabel(link)}
                 </Link>
               </li>
             );

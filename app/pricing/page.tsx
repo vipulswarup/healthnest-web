@@ -1,18 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { publicPageMetadata } from '@/lib/seo';
 import { MarketingShell } from '@/components/marketing/MarketingShell';
 
-export const metadata: Metadata = {
-  title: 'Pricing',
+export const metadata: Metadata = publicPageMetadata({
+  title: 'SanoVault Pricing – Free Personal Health Record App (Beta)',
   description: 'SanoVault is free to use during the beta. AI extraction and summaries may become paid later.',
-  alternates: { canonical: '/pricing' },
-  robots: { index: true, follow: true },
-  openGraph: {
-    title: 'Pricing',
-    description: 'SanoVault is free to use during the beta. AI extraction and summaries may become paid later.',
-    url: '/pricing',
-  },
-};
+  path: '/pricing',
+});
 
 export default function PricingPage() {
   return (

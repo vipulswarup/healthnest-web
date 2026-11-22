@@ -438,7 +438,7 @@ export default function HealthRecordDetailPage() {
               <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-sm font-medium text-amber-900">Needs review</p>
                 <p className="mt-1 text-sm text-amber-800">
-                  This report arrived via WhatsApp. Confirm the person and details, then mark it reviewed.
+                  Confirm the person and details, then mark this report reviewed.
                 </p>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1">

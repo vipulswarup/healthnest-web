@@ -77,7 +77,6 @@ export default function HouseholdDetailPage() {
   const [inviteUrl, setInviteUrl] = useState('');
   const [origin, setOrigin] = useState('https://sanovault.com');
   const [whatsappMaps, setWhatsappMaps] = useState<WhatsAppSenderMap[]>([]);
-  const [whatsappPhone, setWhatsappPhone] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -232,29 +231,6 @@ export default function HouseholdDetailPage() {
     }
   };
 
-  const linkWhatsApp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const res = await fetch('/api/whatsapp/sender-map', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: whatsappPhone, householdId: id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not link WhatsApp number');
-      setWhatsappPhone('');
-      setMessage(`Linked WhatsApp +${data.phone}. Forward reports to the SanoVault WhatsApp number, then pick who they belong to.`);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not link WhatsApp');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const unlinkWhatsApp = async (phone: string) => {
     setBusy(true);
     setError('');
@@ -265,10 +241,10 @@ export default function HouseholdDetailPage() {
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not unlink');
-      setMessage('WhatsApp number unlinked.');
+      setMessage('Phone number removed.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unlink WhatsApp');
+      setError(err instanceof Error ? err.message : 'Could not remove phone number');
     } finally {
       setBusy(false);
     }
@@ -379,8 +355,8 @@ export default function HouseholdDetailPage() {
     };
     if (pendingAction.kind === 'unlink-whatsapp') return {
       title: `Unlink +${pendingAction.label}?`,
-      description: 'Reports forwarded from this WhatsApp number will no longer be accepted for this family folder.',
-      label: 'Unlink WhatsApp', tone: 'danger' as const,
+      description: 'This phone number will no longer be linked to this family folder.',
+      label: 'Remove phone number', tone: 'danger' as const,
     };
     if (pendingAction.kind === 'leave') return {
       title: 'Leave this household?',
@@ -389,7 +365,7 @@ export default function HouseholdDetailPage() {
     };
     return {
       title: 'Delete this family?',
-      description: 'This permanently deletes the family for everyone, including invitations and WhatsApp links. Patients and records belonging only to this family are deleted. Patients linked to another family remain there. Login accounts are not deleted.',
+      description: 'This permanently deletes the family for everyone, including invitations and linked phone numbers. Patients and records belonging only to this family are deleted. Patients linked to another family remain there. Login accounts are not deleted.',
       label: 'Delete family', tone: 'danger' as const,
     };
   })();
@@ -475,13 +451,9 @@ export default function HouseholdDetailPage() {
                 )}
               </section>
 
-              <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">WhatsApp intake</h2>
-                <p className="mb-3 text-sm text-gray-600">
-                  Link a phone number so forwards to the SanoVault WhatsApp business number are filed here.
-                  After each forward you will pick who the report belongs to in WhatsApp.
-                </p>
-                {whatsappMaps.length > 0 && (
+              {whatsappMaps.length > 0 && (
+                <section>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-3">Linked phone numbers</h2>
                   <ul className="mb-3 divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
                     {whatsappMaps.map((map) => (
                       <li key={map.phone} className="flex items-center justify-between gap-3 px-4 py-3">
@@ -497,21 +469,8 @@ export default function HouseholdDetailPage() {
                       </li>
                     ))}
                   </ul>
-                )}
-                <form onSubmit={linkWhatsApp} className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="tel"
-                    value={whatsappPhone}
-                    onChange={(e) => setWhatsappPhone(e.target.value)}
-                    placeholder="e.g. +919876543210"
-                    className="flex-1 min-h-12 border border-gray-300 rounded-md px-3 py-2 text-base text-gray-900 bg-white placeholder:text-gray-500"
-                    required
-                  />
-                  <button type="submit" disabled={busy} className="min-h-12 bg-coral text-white px-4 py-2 rounded-md text-base font-medium hover:bg-coral-strong disabled:opacity-50">
-                    Link WhatsApp number
-                  </button>
-                </form>
-              </section>
+                </section>
+              )}
 
               <section>
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">Members</h2>

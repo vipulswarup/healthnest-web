@@ -31,12 +31,26 @@ Set them in Vercel → Project Settings → Environment Variables. The full list
 
 `CRON_SECRET` protects the internal routes. Vercel sends it as a bearer token on cron invocations.
 
+FCM delivery uses `FCM_SERVICE_ACCOUNT_JSON`, a Firebase service-account JSON key
+with the Firebase Cloud Messaging API enabled. Keep it in Vercel environment
+variables; never commit the key. Register the iOS and Android apps in Firebase
+with bundle/package ID `com.sanovault.app`, then place their config files at:
+
+- Android: `sanovault-mobile/android/app/google-services.json`
+- iOS: `sanovault-mobile/ios/Runner/GoogleService-Info.plist` (add it to the Runner target in Xcode)
+
+For iOS delivery, enable the Push Notifications capability for the Runner target
+in Xcode and upload an APNs authentication key under Firebase Project settings
+→ Cloud Messaging. The app requests notification permission after sign-in; users
+can still decline it in the operating system prompt.
+
 ## Scheduled jobs
 
 | Path | Schedule (UTC) | Purpose |
 | --- | --- | --- |
 | `/api/internal/deletions` | daily 02:00 | Retry account-deletion work: R2 erasure and identity-provider cleanup |
 | `/api/internal/medication-catalogue/reconcile` | Mondays 03:00 | Reconcile the medication catalogue |
+| `/api/internal/medication-reorders` | daily 09:00 | Send due reorder reminders through FCM |
 
 ## Account deletion
 
@@ -48,13 +62,14 @@ Deleting an account removes database rows immediately and queues physical R2 era
 
 Migration `0019_deletion.sql` adds the queue and the lifecycle rules. After the first rollout, check the cron and any pending deletion jobs.
 
-## WhatsApp report forwarding (optional)
+## WhatsApp report forwarding (deferred)
+
+The website no longer offers sender setup. The following describes the existing backend for maintainers. See the [product roadmap](../ROADMAP.md) before planning a rollout.
 
 1. Create a Meta Business app with the WhatsApp Cloud API and a business phone number.
 2. Set the webhook URL to `https://www.sanovault.com/api/webhooks/whatsapp` and subscribe to `messages`. Use the same value for the Meta verify token and `WHATSAPP_VERIFY_TOKEN`.
 3. Add `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` and `WHATSAPP_APP_SECRET` (verifies `X-Hub-Signature-256`).
-4. In the app, link each sender's phone number (country code, digits only) under the family folder's WhatsApp intake.
-5. People forward a PDF, photo or text, choose the person in WhatsApp, and confirm the result in the app under **Reports → Needs review**.
+The sender mapping API uses a phone number with country code and digits only. Existing linked numbers can be removed in family settings. The intended flow files PDFs, photos and text under **Reports → Needs review** after the sender selects the person.
 
 Retries use `POST /api/internal/whatsapp/process`, authorised by `WHATSAPP_INTERNAL_SECRET` or `CRON_SECRET`.
 
@@ -75,3 +90,39 @@ Add the domain under Vercel → Domains. `NEXT_PUBLIC_APP_URL` must equal the pu
 ## CI
 
 Vercel builds and deploys automatically. `.github/workflows/deploy.yml.example` is an optional lint/test pipeline you can enable if you want checks before merge (`npm run lint`, `npm run test:security`).
+
+## Website launch checks
+
+The public site includes `/privacy`, `/terms`, a branded 404, and consent controls.
+`npm run audit:website` checks literal internal links, image alt attributes and the
+client import graph. With a production server running on port 3001, run
+`npm run check:public-pages` to check every sitemap page, unique titles,
+descriptions, the custom 404 and local HTTP response times. These local timings
+exclude real device rendering, network throttling and production Core Web Vitals.
+`npm run generate:social-preview` regenerates the 1200 × 630 share image using
+the existing logo and website palette.
+
+The normal build applies migration `0025_auth_rate_limits.sql` before deploying
+code. It is required by web signup, password login, magic links, password-reset
+requests and mobile password login. Counters are atomic across instances, store
+keyed email/IP hashes, and fail closed if the database is unavailable. The
+existing daily deletion cron also removes counters older than 24 hours (so rows
+may remain until that daily cleanup runs). IP limits use Vercel's trusted client
+header only on Vercel. Email limits also apply on other hosts. Keep the existing
+Neon Auth provider abuse protections enabled; these app limits supplement them.
+
+Optional analytics uses [Vercel Web Analytics](https://vercel.com/docs/analytics/quickstart).
+Enable Web Analytics for the existing `sanovault-web` project in the Vercel
+dashboard before the next deployment. No public API key is needed. The script
+loads only after opt-in; an exact public-page allowlist and `beforeSend` filtering
+strip queries/fragments and block private routes after navigation or withdrawal.
+Cookie settings in the public footer can reopen the choices. Essential-only,
+Do Not Track and Global Privacy Control keep optional analytics off. There are no
+custom events containing record or account information. `Referrer-Policy:
+no-referrer` also prevents private referring URLs being shared.
+
+Production responses add HSTS and upgrade insecure subrequests. An HTTP
+`x-forwarded-proto` header redirects to the canonical HTTPS domain with status
+308. A self-hosted reverse proxy must overwrite this header and terminate TLS;
+local development keeps working over HTTP. Credential-reading modules have
+`server-only` barriers to reject accidental frontend imports at build time.

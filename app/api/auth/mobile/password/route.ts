@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAuthRequest } from '@/lib/security/auth-request';
+import { consumeAuthLimit } from '@/lib/security/auth-rate-limit';
 import { z } from 'zod';
 import { auth } from '@/lib/auth/server';
 import { createMobileSession } from '@/lib/auth/mobile-session';
@@ -11,6 +13,8 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const rejection = await guardAuthRequest(request, consumeAuthLimit);
+  if (rejection) return rejection;
   try {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) throw new AppError('Email and password are required', 400);

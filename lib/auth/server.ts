@@ -1,3 +1,4 @@
+import 'server-only';
 import { createNeonAuth } from '@neondatabase/auth/next/server';
 
 function requiredEnvironment(name: 'NEON_AUTH_BASE_URL' | 'NEON_AUTH_COOKIE_SECRET'): string {

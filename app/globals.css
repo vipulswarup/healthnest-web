@@ -86,8 +86,8 @@
   --color-gray-100: #eae9ed;
   --color-gray-200: #dfe0e5;
   --color-gray-300: #cdd1d9;
-  --color-gray-400: #9b9da9;
-  --color-gray-500: #74717c;
+  --color-gray-400: #625d66;
+  --color-gray-500: #625d66;
   --color-gray-600: #625d66;
   --color-gray-700: #514b53;
   --color-gray-800: #433b40;
@@ -97,8 +97,8 @@
   --color-slate-100: #eae9ed;
   --color-slate-200: #dfe0e5;
   --color-slate-300: #cdd1d9;
-  --color-slate-400: #9b9da9;
-  --color-slate-500: #74717c;
+  --color-slate-400: #625d66;
+  --color-slate-500: #625d66;
   --color-slate-600: #625d66;
   --color-slate-700: #514b53;
   --color-slate-800: #433b40;
@@ -108,8 +108,8 @@
   --color-zinc-100: #eae9ed;
   --color-zinc-200: #dfe0e5;
   --color-zinc-300: #cdd1d9;
-  --color-zinc-400: #9b9da9;
-  --color-zinc-500: #74717c;
+  --color-zinc-400: #625d66;
+  --color-zinc-500: #625d66;
   --color-zinc-600: #625d66;
   --color-zinc-700: #514b53;
   --color-zinc-800: #433b40;
@@ -297,4 +297,10 @@ textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Keep long filenames and legal copy within narrow screens. */
+main { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 1rem; }
 }

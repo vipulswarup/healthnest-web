@@ -811,7 +811,7 @@ function NewHealthRecordContent() {
       <div>
         <h3 className="mb-2 text-lg font-semibold text-gray-900">Who is this report for?</h3>
         <p className="mb-6 text-sm text-gray-600">
-          Choose the person first. Then you can take a photo or pick a file from WhatsApp.
+          Choose the person first. Then you can take a photo or choose a saved file.
         </p>
       </div>
       {patients.length === 0 ? (
@@ -884,7 +884,7 @@ function NewHealthRecordContent() {
                   onClick={() => {
                     resetExtractionState();
                   }}
-                  className="text-red-500 hover:text-red-700 text-sm"
+                  className="text-red-600 hover:text-red-700 text-sm"
                 >
                   Remove
                 </button>
