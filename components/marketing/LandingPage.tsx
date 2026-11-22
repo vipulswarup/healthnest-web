@@ -8,6 +8,7 @@ import {
   SITE_TAGLINE,
 } from "@/lib/site";
 import { FaqSection } from "@/components/marketing/FaqSection";
+import { AppDownloadBadges } from "@/components/marketing/AppDownloadBadges";
 import { JsonLd } from "@/components/marketing/JsonLd";
 import {
   MarketingCta,
@@ -173,6 +174,9 @@ export function LandingPage() {
                 <Link href="/auth/signin" className="sv-btn sv-btn-outline">
                   Sign in
                 </Link>
+              </div>
+              <div className="mt-4">
+                <AppDownloadBadges />
               </div>
             </div>
 
