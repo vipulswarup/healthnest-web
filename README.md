@@ -2,6 +2,8 @@
 
 The SanoVault website **and** the HTTP API used by the mobile app. Next.js (App Router) on Vercel, Neon Postgres, Cloudflare R2.
 
+[SanoVault](https://sanovault.com) is a personal health record app that helps families keep reports, prescriptions, and other medical documents organized in one place.
+
 Where things live: see the [repository README](../README.md). Production hosting, scheduled jobs and WhatsApp setup: [DEPLOYMENT.md](./DEPLOYMENT.md). When something breaks: [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 ## Stack
@@ -80,6 +82,8 @@ Every health-data route authenticates with `getCurrentUser()` (`lib/auth/session
 ## API
 
 All routes are under `/api` and accept either the website cookie or `Authorization: Bearer <mobile token>`. Methods listed are those implemented.
+
+Machine-readable contract: [openapi.yaml](./openapi.yaml) (OpenAPI 3.0). Prefer that file for request/response schemas; this table remains the quick route index.
 
 | Area | Routes |
 | --- | --- |

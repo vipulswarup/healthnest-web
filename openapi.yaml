@@ -1,0 +1,6539 @@
+# SanoVault HTTP API — OpenAPI 3.0.3
+# Source of truth for shapes: Next.js App Router handlers under app/api/
+# and shared mappers in lib/. See README.md API section for the route table.
+#
+# Generated for documentation; keep in sync when changing public/mobile routes.
+
+openapi: 3.0.3
+info:
+  title: SanoVault HTTP API
+  version: 1.0.0
+  description: |-
+    HTTP API for the SanoVault website and mobile app.
+
+    All routes live under `/api`. Authenticated routes accept either the website cookie session (Neon Auth) or `Authorization: Bearer <mobile token>` as resolved by `getCurrentUser()` / `getAuthenticatedUser()` in `lib/auth/session.ts`.
+
+    This specification covers the public/mobile-relevant surface summarized in `sanovault-web/README.md` (API section), grounded in the Next.js App Router handlers under `app/api/`.
+
+    Not fully detailed here (exist in the codebase but outside the README table, or nested response shapes left open): care-share token routes (`/api/care/*`, `/api/care-shares`), API tokens (`/api/api-tokens`), patient overview/export, health-record summary/category-resolve, and deep nested fields inside blood-summary / doctor-packet lab objects.
+  contact:
+    name: Argali Knowledge Services Private Limited
+    url: https://www.sanovault.com
+  license:
+    name: SEE LICENSE IN LICENSE
+servers:
+- url: https://www.sanovault.com/api
+  description: Production
+- url: http://localhost:3001/api
+  description: Local development
+tags:
+- name: Auth
+  description: Neon Auth passthrough and mobile bearer sessions
+- name: Account
+  description: Profile, consent, devices, privacy, deletion
+- name: Home
+  description: Dashboard and active household
+- name: Families
+  description: Households, members, invites, patient links
+- name: People
+  description: Patients and file passwords
+- name: Reports
+  description: Health records, categories, sources, doctors
+- name: Documents
+  description: Upload, preview, share
+- name: AI and OCR
+  description: OCR and Groq-backed analysis (consent gated)
+- name: Medicines
+  description: Medications, catalogue, photo extract
+- name: Vitals
+  description: Blood pressure and growth
+- name: Tracking
+  description: Vaccinations and visit notes
+- name: Doctor
+  description: Doctor packet and blood summary
+- name: WhatsApp
+  description: Webhook and sender map
+- name: Internal
+  description: Cron / secret-protected maintenance routes
+paths:
+  /auth/{path}:
+    get:
+      summary: Neon Auth catch-all (GET)
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Neon Auth response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      description: Proxied to Neon Auth `auth.handler()` (Next.js catch-all `app/api/auth/[...path]`). Protocol
+        is owned by Neon Auth; not re-specified here. The `{path}` parameter stands in for one or more
+        path segments.
+      security: []
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Neon Auth subpath (catch-all; may represent nested segments)
+    post:
+      summary: Neon Auth catch-all (POST)
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Neon Auth response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      description: Proxied to Neon Auth `auth.handler()`.
+      security: []
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      summary: Neon Auth catch-all (PUT)
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Neon Auth response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      description: Proxied to Neon Auth `auth.handler()`.
+      security: []
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Neon Auth catch-all (PATCH)
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Neon Auth response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      description: Proxied to Neon Auth `auth.handler()`.
+      security: []
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      summary: Neon Auth catch-all (DELETE)
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Neon Auth response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      description: Proxied to Neon Auth `auth.handler()`.
+      security: []
+      parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+  /auth/mobile/apple:
+    post:
+      summary: Sign in with Apple (mobile)
+      tags:
+      - Auth
+      responses:
+        '201':
+          description: Mobile session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileSession'
+        '400':
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Apple verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - identityToken
+              properties:
+                identityToken:
+                  type: string
+                  minLength: 20
+                authorizationCode:
+                  type: string
+                  minLength: 1
+                fullName:
+                  type: string
+                  nullable: true
+                  maxLength: 160
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+  /auth/mobile/password:
+    post:
+      summary: Email/password sign-in (mobile)
+      tags:
+      - Auth
+      responses:
+        '201':
+          description: Mobile session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileSession'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 1
+  /auth/mobile/session:
+    post:
+      summary: Mint mobile bearer from existing web/API session
+      tags:
+      - Auth
+      responses:
+        '201':
+          description: Mobile session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileSession'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Uses `getAuthenticatedUser()` (cookie or bearer). Does not require beta acknowledgement.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    delete:
+      summary: Revoke current mobile bearer token
+      tags:
+      - Auth
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Revokes the token in the Authorization header when present.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /users/me:
+    get:
+      summary: Get current profile
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    put:
+      summary: Update current profile
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                  nullable: true
+                preferences:
+                  type: object
+                  additionalProperties: true
+                onboardingCompleted:
+                  type: boolean
+  /users/beta-acknowledgement:
+    get:
+      summary: Get beta acknowledgement and Groq AI consent state
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Ack state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acknowledged:
+                    type: boolean
+                  version:
+                    type: string
+                  acceptedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  groqAiEnabled:
+                    type: boolean
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Uses `getAuthenticatedUser()` (no beta gate).
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    post:
+      summary: Store beta acknowledgement and Groq AI choice
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acknowledged:
+                    type: boolean
+                  version:
+                    type: string
+                  groqAiEnabled:
+                    type: boolean
+                  acceptedAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - version
+              - groqAiEnabled
+              properties:
+                version:
+                  type: string
+                  enum:
+                  - '2026-09-25'
+                groqAiEnabled:
+                  type: boolean
+  /users/groq-ai-consent:
+    patch:
+      summary: Toggle Groq AI processing consent
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enabled
+              properties:
+                enabled:
+                  type: boolean
+  /users/me/deletion:
+    get:
+      summary: Preview account deletion impact
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Deletion preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  families:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        will_delete:
+                          type: boolean
+                  needsAppleReauthentication:
+                    type: boolean
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Uses `getAuthenticatedUser()` (no beta gate).
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    post:
+      summary: Confirm account erasure
+      tags:
+      - Account
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: APPLE_REAUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - confirmation
+              properties:
+                confirmation:
+                  type: string
+                  enum:
+                  - DELETE
+                appleAuthorizationCode:
+                  type: string
+                  minLength: 1
+  /users/onboarding/complete:
+    post:
+      summary: Mark onboarding completed
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /privacy:
+    get:
+      summary: Privacy policy JSON
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  updated:
+                    type: string
+                  operator:
+                    type: string
+                  email:
+                    type: string
+                  sections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        text:
+                          type: string
+      security: []
+  /devices:
+    post:
+      summary: Register push device token
+      tags:
+      - Account
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              - platform
+              properties:
+                token:
+                  type: string
+                  minLength: 8
+                  maxLength: 4096
+                platform:
+                  type: string
+                  enum:
+                  - ios
+                  - android
+                provider:
+                  type: string
+                  enum:
+                  - expo
+                  - fcm
+                  default: expo
+    delete:
+      summary: Unregister push device token
+      tags:
+      - Account
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              properties:
+                token:
+                  type: string
+                  minLength: 8
+                  maxLength: 4096
+      responses:
+        '200':
+          description: Unregistered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+  /dashboard:
+    get:
+      summary: Active household home payload
+      tags:
+      - Home
+      responses:
+        '200':
+          description: Dashboard home
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardHome'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /me/active-household:
+    get:
+      summary: Get preferred active household id
+      tags:
+      - Home
+      responses:
+        '200':
+          description: Active household
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  householdId:
+                    type: string
+                    format: uuid
+                    nullable: true
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    patch:
+      summary: Set active household preference
+      tags:
+      - Home
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  householdId:
+                    type: string
+                    format: uuid
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - householdId
+              properties:
+                householdId:
+                  type: string
+                  format: uuid
+  /households:
+    get:
+      summary: List households for current user
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Households
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Household'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    post:
+      summary: Create household
+      tags:
+      - Families
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Household'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+  /households/{id}:
+    get:
+      summary: Get household
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Household
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Household'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    patch:
+      summary: Rename household
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Household'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+    delete:
+      summary: Delete family
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /households/{id}/members:
+    get:
+      summary: List household members
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HouseholdMember'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /households/{id}/members/{userId}:
+    delete:
+      summary: Remove household member
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Member user id
+  /households/{id}/invites:
+    get:
+      summary: List household invites
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HouseholdInvite'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    post:
+      summary: Create household invite
+      tags:
+      - Families
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HouseholdInvite'
+                - type: object
+                  properties:
+                    emailSent:
+                      type: boolean
+                    emailError:
+                      type: string
+                      nullable: true
+                    acceptUrl:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  format: email
+  /households/{id}/invites/{inviteId}:
+    delete:
+      summary: Revoke household invite
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      - name: inviteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Invite id
+  /households/{id}/patients:
+    get:
+      summary: List patients linked to household
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Patients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    post:
+      summary: Link patient to household
+      tags:
+      - Families
+      responses:
+        '201':
+          description: Linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+  /households/{id}/patients/{patientId}:
+    delete:
+      summary: Remove patient from family
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      - name: patientId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Patient id
+  /households/{id}/leave:
+    post:
+      summary: Leave family
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Left
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  dissolved:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /households/invites/{token}:
+    get:
+      summary: Preview household invite
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Invite preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite:
+                    $ref: '#/components/schemas/PublicHouseholdInvite'
+                  shareablePatients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Patient'
+                  emailMatches:
+                    type: boolean
+                  authenticated:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: 'Optional cookie/bearer: when authenticated, includes shareable patients and emailMatches.'
+      security: []
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Accept or decline household invite
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  householdId:
+                    type: string
+                    format: uuid
+                  patientsLinked:
+                    type: integer
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                patientIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  default: []
+                decline:
+                  type: boolean
+  /households/invites/pending:
+    get:
+      summary: Pending invites for current user email
+      tags:
+      - Families
+      responses:
+        '200':
+          description: Pending invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HouseholdInvite'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /patients:
+    get:
+      summary: List patients in active household
+      tags:
+      - People
+      responses:
+        '200':
+          description: Patients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+        '400':
+          description: NO_HOUSEHOLD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+    post:
+      summary: Create patient and link to household
+      tags:
+      - People
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - firstName
+              - dateOfBirth
+              - gender
+              - householdId
+              properties:
+                firstName:
+                  type: string
+                middleName:
+                  type: string
+                lastName:
+                  type: string
+                title:
+                  type: string
+                suffix:
+                  type: string
+                emails:
+                  type: array
+                  items:
+                    type: string
+                dateOfBirth:
+                  type: string
+                  description: ISO datetime or YYYY-MM-DD
+                gender:
+                  type: string
+                householdId:
+                  type: string
+                  format: uuid
+                abhaNumber:
+                  type: string
+                bloodGroup:
+                  type: string
+                emergencyContacts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EmergencyContact'
+                preferences:
+                  type: object
+                  additionalProperties: true
+                hospitalIdentifiers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/HospitalIdentifier'
+                mobileNumbers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/MobileNumber'
+  /patients/search:
+    get:
+      summary: Search accessible patients by hospital id or mobile
+      tags:
+      - People
+      responses:
+        '200':
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Provide either hospitalSystem+identifierType+identifierValue together, or mobileNumber.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: hospitalSystem
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: identifierType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: identifierValue
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: mobileNumber
+        in: query
+        required: false
+        schema:
+          type: string
+  /patients/{id}:
+    get:
+      summary: Get patient
+      tags:
+      - People
+      responses:
+        '200':
+          description: Patient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    put:
+      summary: Update patient
+      tags:
+      - People
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                middleName:
+                  type: string
+                lastName:
+                  type: string
+                title:
+                  type: string
+                suffix:
+                  type: string
+                emails:
+                  type: array
+                  items:
+                    type: string
+                dateOfBirth:
+                  type: string
+                gender:
+                  type: string
+                abhaNumber:
+                  type: string
+                bloodGroup:
+                  type: string
+                emergencyContacts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EmergencyContact'
+                preferences:
+                  type: object
+                  additionalProperties: true
+                hospitalIdentifiers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/HospitalIdentifier'
+                mobileNumbers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/MobileNumber'
+    delete:
+      summary: Remove patient from active family
+      tags:
+      - People
+      responses:
+        '200':
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /patients/{id}/file-passwords:
+    get:
+      summary: List saved PDF passwords
+      tags:
+      - People
+      responses:
+        '200':
+          description: Passwords
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilePassword'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    post:
+      summary: Add file password
+      tags:
+      - People
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilePassword'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - password
+              properties:
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+  /patients/{id}/file-passwords/{passwordId}:
+    delete:
+      summary: Delete file password
+      tags:
+      - People
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      - name: passwordId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Password id
+  /health-records:
+    get:
+      summary: List health records (newest document date first)
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HealthRecord'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: 'Ordering: COALESCE(document_date, created_at::date) DESC, created_at DESC.'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: keyword
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: recordType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: tag
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: startDate
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: endDate
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      summary: Create health record
+      tags:
+      - Reports
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRecord'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - recordType
+              - data
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                recordType:
+                  type: string
+                data:
+                  type: object
+                  additionalProperties: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                source:
+                  type: string
+                doctorName:
+                  type: string
+                documentDate:
+                  type: string
+                documentId:
+                  type: string
+                  format: uuid
+                ocrText:
+                  type: string
+                hospitalSystemName:
+                  type: string
+                hospitalIdentifierType:
+                  type: string
+                hospitalIdentifierValue:
+                  type: string
+                processAsync:
+                  type: boolean
+  /health-records/{id}:
+    get:
+      summary: Get health record
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRecord'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    put:
+      summary: Update health record
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRecord'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recordType:
+                  type: string
+                data:
+                  type: object
+                  additionalProperties: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                source:
+                  type: string
+                doctorName:
+                  type: string
+                documentDate:
+                  type: string
+                ocrText:
+                  type: string
+                hospitalSystemName:
+                  type: string
+                hospitalIdentifierType:
+                  type: string
+                hospitalIdentifierValue:
+                  type: string
+                patientId:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                customTypeLabel:
+                  type: string
+                approveReview:
+                  type: boolean
+    delete:
+      summary: Delete health record
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /health-records/trends:
+    get:
+      summary: Numeric metric trends from health record data
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Trends
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patientId:
+                    type: string
+                    format: uuid
+                  metric:
+                    type: string
+                  trends:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                        value:
+                          type: number
+                        recordId:
+                          type: string
+                          format: uuid
+                        source:
+                          type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: metric
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 128
+  /health-record-categories:
+    get:
+      summary: List active health record categories
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HealthRecordCategory'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /healthcare-sources:
+    get:
+      summary: List active healthcare sources
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HealthcareSource'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /healthcare-sources/match:
+    post:
+      summary: Fuzzy-match healthcare source name
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Match
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched:
+                    type: string
+                  source:
+                    allOf:
+                    - $ref: '#/components/schemas/HealthcareSource'
+                    nullable: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+  /doctors:
+    get:
+      summary: List distinct doctor names from accessible records
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Doctors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DoctorName'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+  /doctors/match:
+    post:
+      summary: Match doctor name
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: Match
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched:
+                    type: string
+                  doctor:
+                    type: object
+                    nullable: true
+                    properties:
+                      preferredName:
+                        type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+  /documents/upload:
+    post:
+      summary: Upload document to R2
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Duplicate of existing document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '201':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Max 50MB. Returns existing document with duplicate:true on checksum hit (200), else
+        201.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                patientId:
+                  type: string
+                  format: uuid
+                pdfPassword:
+                  type: string
+  /documents/lookup-hash:
+    post:
+      summary: Lookup document by SHA-256 for a patient
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Lookup result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicate:
+                    type: boolean
+                  documentId:
+                    type: string
+                    format: uuid
+                    nullable: true
+                  pendingChecksums:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - sha256
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                sha256:
+                  type: string
+                  pattern: ^[a-fA-F0-9]{64}$
+  /documents/view:
+    post:
+      summary: Create signed download URL for a document
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Signed URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  downloadUrl:
+                    type: string
+                  fileName:
+                    type: string
+                  fileType:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - documentId
+              properties:
+                documentId:
+                  type: string
+                  format: uuid
+  /documents/preview:
+    get:
+      summary: JPEG preview bytes for convertible images
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: JPEG preview
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: documentId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /documents/{id}:
+    get:
+      summary: Get document metadata
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    delete:
+      summary: Delete document
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /documents/{id}/file:
+    get:
+      summary: Stream stored file bytes
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /documents/{id}/share:
+    get:
+      summary: Get active share link
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Share
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share:
+                    allOf:
+                    - $ref: '#/components/schemas/DocumentShare'
+                    nullable: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    post:
+      summary: Create share link
+      tags:
+      - Documents
+      responses:
+        '201':
+          description: Share created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share:
+                    $ref: '#/components/schemas/DocumentShare'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 160
+                expiresInDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 30
+    delete:
+      summary: Revoke share link
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked:
+                    type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /documents/{id}/share/email:
+    post:
+      summary: Email share link
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: boolean
+                  shareUrl:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - to
+              properties:
+                to:
+                  type: string
+                  format: email
+                recipientName:
+                  type: string
+                label:
+                  type: string
+  /share/{token}:
+    get:
+      summary: Public share metadata
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: Share metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  label:
+                    type: string
+                    nullable: true
+                  fileName:
+                    type: string
+                  fileType:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  fileUrl:
+                    type: string
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+  /share/{token}/file:
+    get:
+      summary: Public share file bytes
+      tags:
+      - Documents
+      responses:
+        '200':
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+  /ocr/process:
+    post:
+      summary: OCR / extract text for a document
+      tags:
+      - AI and OCR
+      responses:
+        '200':
+          description: OCR result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  mode:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires document ownership and Groq AI consent.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - documentId
+              properties:
+                documentId:
+                  type: string
+                  format: uuid
+                mode:
+                  type: string
+                  description: Use `full` for full OCR; otherwise intake
+                extraPasswords:
+                  type: array
+                  items:
+                    type: string
+  /ai/analyze:
+    post:
+      summary: Full AI analysis of document OCR text
+      tags:
+      - AI and OCR
+      responses:
+        '200':
+          description: Analysis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  classification:
+                    type: string
+                  confidence:
+                    type: number
+                  source:
+                    type: string
+                  doctorName:
+                    type: string
+                  documentDate:
+                    type: string
+                  idType:
+                    type: string
+                  expiryDate:
+                    type: string
+                  tags:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - documentId
+              properties:
+                documentId:
+                  type: string
+                  format: uuid
+  /ai/classify:
+    post:
+      summary: Classify document text
+      tags:
+      - AI and OCR
+      responses:
+        '200':
+          description: Classification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  classification:
+                    type: string
+                  confidence:
+                    type: number
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - documentId
+              properties:
+                documentId:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+  /ai/suggest-tags:
+    post:
+      summary: Suggest tags from document text
+      tags:
+      - AI and OCR
+      responses:
+        '200':
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  matchedTags:
+                    type: array
+                    items:
+                      type: string
+                  newTags:
+                    type: array
+                    items:
+                      type: string
+                  autoSelected:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - documentId
+              properties:
+                documentId:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+  /medications:
+    get:
+      summary: List medications for patient
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Medications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Medication'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: isActive
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - 'true'
+          - 'false'
+    post:
+      summary: Create medication
+      tags:
+      - Medicines
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - name
+              - dosage
+              - frequency
+              - route
+              - startDate
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                dosage:
+                  type: string
+                frequency:
+                  type: string
+                route:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                purchaseCountry:
+                  type: string
+                  enum:
+                  - IN
+                  - US
+                  - GB
+                endDate:
+                  type: string
+                  format: date
+                  nullable: true
+                instructions:
+                  type: string
+                prescribedBy:
+                  type: string
+                source:
+                  type: string
+                indication:
+                  type: string
+                stoppedReason:
+                  type: string
+                isActive:
+                  type: boolean
+                tags:
+                  type: array
+                  items:
+                    type: string
+                composition:
+                  $ref: '#/components/schemas/MedicationCompositionInput'
+  /medications/{id}:
+    get:
+      summary: Get medication
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Medication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+    put:
+      summary: Update medication
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medication'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                originalBrandName:
+                  type: string
+                purchaseCountry:
+                  type: string
+                  enum:
+                  - IN
+                  - US
+                  - GB
+                dosage:
+                  type: string
+                frequency:
+                  type: string
+                route:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+                  nullable: true
+                instructions:
+                  type: string
+                prescribedBy:
+                  type: string
+                source:
+                  type: string
+                indication:
+                  type: string
+                stoppedReason:
+                  type: string
+                isActive:
+                  type: boolean
+                tags:
+                  type: array
+                  items:
+                    type: string
+                composition:
+                  $ref: '#/components/schemas/MedicationCompositionInput'
+    delete:
+      summary: Delete medication
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /medications/extract-from-photo:
+    post:
+      summary: Extract medicine label fields from a photo
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Extraction
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brandName:
+                    type: string
+                  purchaseCountry:
+                    type: string
+                  formulation:
+                    type: string
+                  ingredients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MedicationIngredient'
+                  dosage:
+                    type: string
+                  frequency:
+                    type: string
+                  route:
+                    type: string
+                  confidence:
+                    type: number
+                  catalogueMatches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogueProduct'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires Groq AI consent. Image max 15MB.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                country:
+                  type: string
+                  enum:
+                  - IN
+                  - US
+                  - GB
+                  default: IN
+  /medication-catalog/search:
+    get:
+      summary: Search verified catalogue products
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CatalogueProduct'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: country
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - IN
+          - US
+          - GB
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 100
+  /reports/medications:
+    get:
+      summary: Travel/local brand medication report
+      tags:
+      - Medicines
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  destinationCountry:
+                    type: string
+                  patient:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                  active:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  past:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: country
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - IN
+          - US
+          - GB
+  /vitals/blood-pressure:
+    get:
+      summary: Blood pressure history
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: BP week
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BpWeek'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 365
+        description: Default 8, max 365
+    post:
+      summary: Add vault-owned BP reading
+      tags:
+      - Vitals
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/BpWeek'
+                - type: object
+                  properties:
+                    reading:
+                      $ref: '#/components/schemas/BloodPressureReading'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - systolic
+              - diastolic
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                systolic:
+                  type: integer
+                  minimum: 50
+                  maximum: 250
+                diastolic:
+                  type: integer
+                  minimum: 30
+                  maximum: 180
+                pulse:
+                  type: integer
+                  minimum: 20
+                  maximum: 220
+                  nullable: true
+                period:
+                  type: string
+                  enum:
+                  - morning
+                  - afternoon
+                  - evening
+                  - other
+  /vitals/blood-pressure/{id}:
+    patch:
+      summary: Update BP reading (marks vault-owned)
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/BpWeek'
+                - type: object
+                  properties:
+                    reading:
+                      $ref: '#/components/schemas/BloodPressureReading'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - systolic
+              - diastolic
+              properties:
+                systolic:
+                  type: integer
+                diastolic:
+                  type: integer
+                pulse:
+                  type: integer
+                  nullable: true
+                period:
+                  type: string
+                  enum:
+                  - morning
+                  - afternoon
+                  - evening
+                  - other
+                recordedAt:
+                  type: string
+                  format: date-time
+    delete:
+      summary: Delete vault-owned BP reading
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/BpWeek'
+                - type: object
+                  properties:
+                    ok:
+                      type: boolean
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /vitals/blood-pressure/sync:
+    post:
+      summary: Sync HealthKit / Health Connect BP readings
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: Synced
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/BpWeek'
+                - type: object
+                  properties:
+                    synced:
+                      type: integer
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - readings
+              properties:
+                readings:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: object
+                    required:
+                    - patientId
+                    - systolic
+                    - diastolic
+                    - recordedAt
+                    - source
+                    - externalId
+                    properties:
+                      patientId:
+                        type: string
+                        format: uuid
+                      systolic:
+                        type: integer
+                      diastolic:
+                        type: integer
+                      pulse:
+                        type: integer
+                        nullable: true
+                      recordedAt:
+                        type: string
+                        format: date-time
+                      period:
+                        type: string
+                        enum:
+                        - morning
+                        - afternoon
+                        - evening
+                        - other
+                      source:
+                        type: string
+                        enum:
+                        - healthkit
+                        - health_connect
+                      externalId:
+                        type: string
+  /vitals/growth:
+    get:
+      summary: Growth measurement history
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  measurements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GrowthMeasurement'
+                  lines:
+                    type: array
+                    items:
+                      type: string
+                  latest:
+                    type: object
+                    properties:
+                      heightCm:
+                        type: number
+                        nullable: true
+                      weightKg:
+                        type: number
+                        nullable: true
+                      measuredAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                  dateOfBirth:
+                    type: string
+                    nullable: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Add growth measurement
+      tags:
+      - Vitals
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  measurement:
+                    $ref: '#/components/schemas/GrowthMeasurement'
+                  measurements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GrowthMeasurement'
+                  lines:
+                    type: array
+                    items:
+                      type: string
+                  latest:
+                    type: object
+                    additionalProperties: true
+                  dateOfBirth:
+                    type: string
+                    nullable: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: At least one of heightCm, weightKg, headCircumCm is required.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                heightCm:
+                  type: number
+                  minimum: 30
+                  maximum: 250
+                weightKg:
+                  type: number
+                  minimum: 0.5
+                  maximum: 300
+                headCircumCm:
+                  type: number
+                  minimum: 20
+                  maximum: 70
+                notes:
+                  type: string
+  /vitals/growth/{id}:
+    delete:
+      summary: Delete growth measurement
+      tags:
+      - Vitals
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /vaccinations:
+    get:
+      summary: List vaccinations
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Vaccinations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vaccinations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vaccination'
+                  upcoming:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        vaccineName:
+                          type: string
+                        doseLabel:
+                          type: string
+                        nextDueDate:
+                          type: string
+                          format: date
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Create vaccination
+      tags:
+      - Tracking
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vaccination:
+                    $ref: '#/components/schemas/Vaccination'
+                  vaccinations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vaccination'
+                  upcoming:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - vaccineName
+              - administeredDate
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                vaccineName:
+                  type: string
+                administeredDate:
+                  type: string
+                  format: date
+                doseLabel:
+                  type: string
+                provider:
+                  type: string
+                lotNumber:
+                  type: string
+                site:
+                  type: string
+                nextDueDate:
+                  type: string
+                  format: date
+                  nullable: true
+                notes:
+                  type: string
+  /vaccinations/{id}:
+    patch:
+      summary: Update vaccination
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vaccination:
+                    $ref: '#/components/schemas/Vaccination'
+                  vaccinations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vaccination'
+                  upcoming:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vaccineName:
+                  type: string
+                doseLabel:
+                  type: string
+                administeredDate:
+                  type: string
+                  format: date
+                provider:
+                  type: string
+                lotNumber:
+                  type: string
+                site:
+                  type: string
+                nextDueDate:
+                  type: string
+                  format: date
+                  nullable: true
+                notes:
+                  type: string
+    delete:
+      summary: Delete vaccination
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /visit-notes:
+    get:
+      summary: List visit notes (newest first)
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Notes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VisitNote'
+                  nextAppointment:
+                    type: string
+                    format: date
+                    nullable: true
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: 'Ordering: note_date DESC, created_at DESC. pinned is ignored for ordering.'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Create visit note
+      tags:
+      - Tracking
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note:
+                    $ref: '#/components/schemas/VisitNote'
+                  notes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VisitNote'
+                  nextAppointment:
+                    type: string
+                    nullable: true
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: observed or askDoctor must be non-empty.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              - noteDate
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+                noteDate:
+                  type: string
+                  format: date
+                observed:
+                  type: string
+                  default: ''
+                askDoctor:
+                  type: string
+                  default: ''
+                pinned:
+                  type: boolean
+                  default: false
+  /visit-notes/{id}:
+    patch:
+      summary: Update visit note
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note:
+                    $ref: '#/components/schemas/VisitNote'
+                  notes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VisitNote'
+                  nextAppointment:
+                    type: string
+                    nullable: true
+                  packetLines:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pinned:
+                  type: boolean
+                observed:
+                  type: string
+                askDoctor:
+                  type: string
+                noteDate:
+                  type: string
+                  format: date
+    delete:
+      summary: Delete visit note
+      tags:
+      - Tracking
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Resource id (UUID)
+  /reports/doctor-packet:
+    get:
+      summary: One-page clinic packet
+      tags:
+      - Doctor
+      responses:
+        '200':
+          description: Doctor packet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patient:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                      dateOfBirth:
+                        type: string
+                      age:
+                        type: string
+                      gender:
+                        type: string
+                      bloodGroup:
+                        type: string
+                  conditions:
+                    type: array
+                    items:
+                      type: string
+                  medicines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        line:
+                          type: string
+                        detailLine:
+                          type: string
+                        warning:
+                          type: boolean
+                  labHighlights:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  labTrends:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  bloodPressure:
+                    type: object
+                    additionalProperties: true
+                  growth:
+                    type: object
+                    additionalProperties: true
+                  vaccinations:
+                    type: object
+                    additionalProperties: true
+                  visitNotes:
+                    type: object
+                    additionalProperties: true
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        documentId:
+                          type: string
+                          format: uuid
+                        label:
+                          type: string
+                        href:
+                          type: string
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Notify household that doctor packet was shared
+      tags:
+      - Doctor
+      responses:
+        '200':
+          description: Notified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - patientId
+              properties:
+                patientId:
+                  type: string
+                  format: uuid
+  /reports/blood-summary:
+    get:
+      summary: Blood / lab summary for patient
+      tags:
+      - Doctor
+      responses:
+        '200':
+          description: Blood summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patient:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                  periodStart:
+                    type: string
+                  periodEnd:
+                    type: string
+                  lookbackDays:
+                    type: integer
+                  candidateReportCount:
+                    type: integer
+                  latestCandidate:
+                    type: object
+                    additionalProperties: true
+                    nullable: true
+                  reports:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  comparisons:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  panels:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  keyFindings:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Nested comparison/panel/finding shapes follow buildBloodReportSummary; see route and
+        lib/reports/blood-summary.ts.
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: patientId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /webhooks/whatsapp:
+    get:
+      summary: Meta webhook verification challenge
+      tags:
+      - WhatsApp
+      responses:
+        '200':
+          description: Challenge echo
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Returns plain-text challenge when hub.verify_token matches WHATSAPP_VERIFY_TOKEN.
+      security: []
+      parameters:
+      - name: hub.mode
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: hub.verify_token
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: hub.challenge
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      summary: Ingest WhatsApp Cloud API webhook
+      tags:
+      - WhatsApp
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '401':
+          description: Invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  reason:
+                    type: string
+      description: Authenticated via `x-hub-signature-256` (Meta app secret). Body is Meta WhatsApp Cloud
+        API JSON.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /whatsapp/sender-map:
+    get:
+      summary: List phone-to-household maps
+      tags:
+      - WhatsApp
+      responses:
+        '200':
+          description: Maps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhatsAppSenderMap'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: householdId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Upsert sender map
+      tags:
+      - WhatsApp
+      responses:
+        '200':
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhatsAppSenderMap'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - phone
+              properties:
+                phone:
+                  type: string
+                  minLength: 8
+                  maxLength: 20
+                householdId:
+                  type: string
+                  format: uuid
+                defaultPatientId:
+                  type: string
+                  format: uuid
+                  nullable: true
+    delete:
+      summary: Unlink phone from household
+      tags:
+      - WhatsApp
+      responses:
+        '200':
+          description: Unlinked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - cookieSession: []
+      - bearerAuth: []
+      parameters:
+      - name: phone
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: householdId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+  /internal/deletions:
+    get:
+      summary: Process queued deletion jobs
+      tags:
+      - Internal
+      responses:
+        '200':
+          description: Processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  completed:
+                    type: integer
+                  failed:
+                    type: integer
+                  pending:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Failures occurred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  completed:
+                    type: integer
+                  failed:
+                    type: integer
+                  pending:
+                    type: integer
+      description: 'Internal/cron. Requires Authorization: Bearer CRON_SECRET. Processes up to 10 jobs.'
+      security:
+      - cronSecret: []
+  /internal/medication-catalogue/reconcile:
+    get:
+      summary: Reconcile medication catalogue from feed
+      tags:
+      - Internal
+      responses:
+        '200':
+          description: Reconciled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  verified:
+                    type: integer
+                  flagged:
+                    type: integer
+                  promoted:
+                    type: integer
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: 'Internal/cron. Requires Authorization: Bearer CRON_SECRET.'
+      security:
+      - cronSecret: []
+  /internal/whatsapp/process:
+    post:
+      summary: Retry WhatsApp OCR+AI ingest for an inbound id
+      tags:
+      - Internal
+      responses:
+        '200':
+          description: Processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Internal. Bearer WHATSAPP_INTERNAL_SECRET or CRON_SECRET.
+      security:
+      - cronSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - inboundId
+              properties:
+                inboundId:
+                  type: string
+                  format: uuid
+components:
+  securitySchemes:
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Website Neon Auth session cookie. Exact cookie name is managed by Neon Auth; present
+        whenever the browser is signed in. Equivalent to bearer for `getCurrentUser()`.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: mobile token
+      description: Mobile session token from `/auth/mobile/*` (or minted via POST /auth/mobile/session).
+    cronSecret:
+      type: http
+      scheme: bearer
+      bearerFormat: CRON_SECRET
+      description: 'Internal routes: `Authorization: Bearer <CRON_SECRET>`. `POST /internal/whatsapp/process`
+        also accepts `WHATSAPP_INTERNAL_SECRET`.'
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+      additionalProperties: true
+    Ok:
+      type: object
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+    MobileNumber:
+      type: object
+      properties:
+        countryCode:
+          type: string
+        number:
+          type: string
+    EmergencyContact:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        relation:
+          type: string
+    HospitalIdentifier:
+      type: object
+      properties:
+        systemName:
+          type: string
+        identifierType:
+          type: string
+        value:
+          type: string
+    MobileSession:
+      type: object
+      required:
+      - token
+      - expiresAt
+      properties:
+        token:
+          type: string
+          description: Bearer token for Authorization header
+        expiresAt:
+          type: string
+          format: date-time
+        userId:
+          type: string
+          format: uuid
+          description: Present on Apple sign-in
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+          nullable: true
+        preferences:
+          type: object
+          additionalProperties: true
+        onboardingCompleted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Patient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+          nullable: true
+        householdIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+        title:
+          type: string
+        suffix:
+          type: string
+        emails:
+          type: array
+          items:
+            type: string
+        mobileNumbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/MobileNumber'
+        dateOfBirth:
+          type: string
+          description: Calendar date or datetime from DB
+        gender:
+          type: string
+        abhaNumber:
+          type: string
+        bloodGroup:
+          type: string
+        emergencyContacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmergencyContact'
+        preferences:
+          type: object
+          additionalProperties: true
+        hospitalIdentifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/HospitalIdentifier'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Household:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    HouseholdMember:
+      type: object
+      properties:
+        householdId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+    HouseholdInvite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+        householdName:
+          type: string
+        email:
+          type: string
+        token:
+          type: string
+        invitedBy:
+          type: string
+          format: uuid
+        invitedByName:
+          type: string
+        status:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    PublicHouseholdInvite:
+      type: object
+      properties:
+        householdName:
+          type: string
+        invitedByName:
+          type: string
+        status:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    HealthRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        recordType:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+        doctorName:
+          type: string
+        documentDate:
+          type: string
+          nullable: true
+        documentId:
+          type: string
+          format: uuid
+        ocrText:
+          type: string
+        hospitalSystemName:
+          type: string
+        hospitalIdentifierType:
+          type: string
+        hospitalIdentifierValue:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        _id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+        fileType:
+          type: string
+        checksumSha256:
+          type: string
+        r2Key:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+          - PENDING
+          - PROCESSING
+          - COMPLETED
+          - FAILED
+        ocrStatus:
+          type: string
+        ocrText:
+          type: string
+        aiStatus:
+          type: string
+        classification:
+          type: string
+        extractedData:
+          type: object
+          additionalProperties: true
+        suggestedTags:
+          type: array
+          items:
+            type: string
+        confidenceScore:
+          type: number
+        isApproved:
+          type: boolean
+        approvedAt:
+          type: string
+          format: date-time
+        approvedTags:
+          type: array
+          items:
+            type: string
+        rejectionReason:
+          type: string
+        duplicate:
+          type: boolean
+          description: Set on upload when a checksum match is found
+    DocumentShare:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        shareUrl:
+          type: string
+          format: uri
+        label:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    MedicationIngredient:
+      type: object
+      required:
+      - canonicalInn
+      - strength
+      - strengthUnit
+      properties:
+        canonicalInn:
+          type: string
+          maxLength: 160
+        localAlias:
+          type: string
+          maxLength: 160
+          nullable: true
+        strength:
+          type: string
+          maxLength: 80
+        strengthUnit:
+          type: string
+          maxLength: 32
+    MedicationComposition:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - CONFIRMED
+          - UNCONFIRMED
+        formulation:
+          type: string
+          nullable: true
+        catalogProductId:
+          type: string
+          format: uuid
+          nullable: true
+        sourceName:
+          type: string
+          nullable: true
+        sourceVersion:
+          type: string
+          nullable: true
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationIngredient'
+          maxItems: 12
+        reviewStatus:
+          type: string
+        requiresWarning:
+          type: boolean
+    Medication:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        originalBrandName:
+          type: string
+          nullable: true
+        purchaseCountry:
+          type: string
+          enum:
+          - IN
+          - US
+          - GB
+          nullable: true
+        indication:
+          type: string
+          nullable: true
+        stoppedReason:
+          type: string
+          nullable: true
+        dosage:
+          type: string
+        frequency:
+          type: string
+        route:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        instructions:
+          type: string
+          nullable: true
+        prescribedBy:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        composition:
+          $ref: '#/components/schemas/MedicationComposition'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BloodPressureReading:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        recordedAt:
+          type: string
+          format: date-time
+        period:
+          type: string
+          enum:
+          - morning
+          - afternoon
+          - evening
+          - other
+        systolic:
+          type: integer
+        diastolic:
+          type: integer
+        pulse:
+          type: integer
+          nullable: true
+        calendarDate:
+          type: string
+          format: date
+        source:
+          type: string
+          enum:
+          - sanovault
+          - healthkit
+          - health_connect
+        externalId:
+          type: string
+          nullable: true
+        vaultOwned:
+          type: boolean
+    BpDaySlot:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        label:
+          type: string
+        morning:
+          allOf:
+          - $ref: '#/components/schemas/BloodPressureReading'
+          nullable: true
+        afternoon:
+          allOf:
+          - $ref: '#/components/schemas/BloodPressureReading'
+          nullable: true
+        evening:
+          allOf:
+          - $ref: '#/components/schemas/BloodPressureReading'
+          nullable: true
+    BpWeek:
+      type: object
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: '#/components/schemas/BloodPressureReading'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/BpDaySlot'
+        lines:
+          type: array
+          items:
+            type: string
+    GrowthMeasurement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        measuredAt:
+          type: string
+          format: date-time
+        heightCm:
+          type: number
+          nullable: true
+        weightKg:
+          type: number
+          nullable: true
+        headCircumCm:
+          type: number
+          nullable: true
+        notes:
+          type: string
+        calendarDate:
+          type: string
+          format: date
+    Vaccination:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        vaccineName:
+          type: string
+        doseLabel:
+          type: string
+        administeredDate:
+          type: string
+          format: date
+        provider:
+          type: string
+        lotNumber:
+          type: string
+        site:
+          type: string
+        nextDueDate:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    VisitNote:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        patientId:
+          type: string
+          format: uuid
+        noteDate:
+          type: string
+          format: date
+        observed:
+          type: string
+        askDoctor:
+          type: string
+        pinned:
+          type: boolean
+          description: Retained in DB but ignored for ordering
+        createdAt:
+          type: string
+          format: date-time
+    DashboardHome:
+      type: object
+      properties:
+        householdId:
+          type: string
+          format: uuid
+          nullable: true
+        acknowledged:
+          type: boolean
+        households:
+          type: array
+          items:
+            $ref: '#/components/schemas/Household'
+        pending:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              token:
+                type: string
+              householdName:
+                type: string
+              invitedByName:
+                type: string
+        patients:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              firstName:
+                type: string
+              lastName:
+                type: string
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              patientId:
+                type: string
+                format: uuid
+              recordType:
+                type: string
+              source:
+                type: string
+              documentDate:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+              title:
+                type: string
+              tags:
+                type: array
+                items:
+                  type: string
+    FilePassword:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        password:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    HealthRecordCategory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+    HealthcareSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        preferredName:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DoctorName:
+      type: object
+      properties:
+        id:
+          type: string
+        preferredName:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+    CatalogueProduct:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        country:
+          type: string
+          enum:
+          - IN
+          - US
+          - GB
+        brandName:
+          type: string
+        formulation:
+          type: string
+        sourceName:
+          type: string
+        sourceVersion:
+          type: string
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationIngredient'
+    WhatsAppSenderMap:
+      type: object
+      properties:
+        phone:
+          type: string
+        householdId:
+          type: string
+          format: uuid
+        defaultPatientId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    MedicationCompositionInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - CONFIRMED
+          - UNCONFIRMED
+          default: UNCONFIRMED
+        formulation:
+          type: string
+          nullable: true
+          maxLength: 160
+        catalogProductId:
+          type: string
+          format: uuid
+          nullable: true
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicationIngredient'
+          maxItems: 12
